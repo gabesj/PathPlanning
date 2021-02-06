@@ -55,7 +55,7 @@ int main() {
   int lane = 1;
 
   ///have a reference velocity to target
-  double ref_vel = 49.5; //mph
+  double ref_vel = 0.0; //49.5; //mph
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel]
@@ -95,17 +95,71 @@ int main() {
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
 
-          /////json msgJson;
-
-          /////vector<double> next_x_vals;
-          /////vector<double> next_y_vals;
-
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
 	  /// size of the last calculated path
-	  int prev_size = previous_path_x.size();	  
+	  int prev_size = previous_path_x.size();
+
+	  if(prev_size>0) {
+	    car_s = end_path_s;
+	  }
+	  
+	  bool too_close = false;
+	  double accel_factor = 1;//////////////////////////////////
+	  double check_car_s; ////////////////////////////
+	  double check_speed;//////////////////
+	  //find ref_v to use
+	  for(int i=0; i<sensor_fusion.size(); ++i) {
+	    //car is in my lane
+	    float d = sensor_fusion[i][6];
+	    if(d<(2+4*lane+2) && d>(2+4*lane-2)) {
+	      double vx = sensor_fusion[i][3];
+	      double vy = sensor_fusion[i][4];
+	      //double check_speed = sqrt(vx*vx+vy*vy);
+	      check_speed = sqrt(vx*vx+vy*vy);
+	      //double check_car_s = sensor_fusion[i][5];
+	      check_car_s = sensor_fusion[i][5];
+
+	      check_car_s+=((double)prev_size*0.02*check_speed); //if using previous points can project s value out a time step
+	      // check s values greater than mine and s gap
+	      if((check_car_s > car_s) && ((check_car_s-car_s) < 30)) {//other car is ahead of me by less than 30m
+	        // Do some logic here, lower reference velocity so we don't crash into the car in front of us
+		// could also flag to try to change lanes.
+		//ref_vel = 29.5; // mph
+		too_close = true;
+		//if(lane>0) {
+		//  lane = 0;
+		//}
+	        std::cout << "check_speed = " << check_speed << ", car_speed = " << car_speed << std::endl;
+	      }
+	    }
+	  }
+	  
+	  if(too_close) {
+	    accel_factor = abs(60/((check_car_s-car_s))); //becomes more relevant as the distance to preceding car decreases
+	    //ref_vel -= 0.224;
+	    if(((ref_vel*accel_factor)<0.4) && ((1.25*check_speed)<car_speed)){ //don't exceed jerk limit of 10m/s2
+	      ref_vel -= ref_vel * accel_factor;
+	      
+	    }
+	    else if((1.25*check_speed)<car_speed) { 
+	      ref_vel -= 0.4;
+	    }
+	    else { //if slower than car ahead, speed up a bit
+	      ref_vel += 0.0;
+	    }
+	  }
+	  else if(ref_vel < 49.0) {
+	    accel_factor = (49-ref_vel)*(49-ref_vel)/10; //becomes more relevant as the gap between speed and speed limit increases
+	    if(((ref_vel*accel_factor)<0.4) && (ref_vel>20)) {
+	      ref_vel += ref_vel * accel_factor;
+	    }
+	    else {
+	      ref_vel += 0.4;
+	    }
+	  }
 
 	  /// create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
   	  /// later we will interpolate these waypoints with a spline and fill it in with more points that control speed.
@@ -141,10 +195,10 @@ int main() {
 	    ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
 
 	    /// use two points that make the path tangent to the previous path's end point
-	    ptsx.push_back(ref_x_prev);///temporary comment out
+	    ptsx.push_back(ref_x_prev);
 	    ptsx.push_back(ref_x);
 
-	    ptsy.push_back(ref_y_prev);///temporary comment out
+	    ptsy.push_back(ref_y_prev);
 	    ptsy.push_back(ref_y);
 	  }
 
@@ -164,7 +218,7 @@ int main() {
 	  /// the ptsx and ptsy vectors now each have 5 points: previous point, current point, point 30m ahead, 60m ahead, and 90m ahead
 
 	  /// transform the ptsx and ptsy to the car's perspective, referencing the car's current angle as 0 degrees.
-	  for (int i=0; i<ptsx.size(); i++){
+	  for (int i=0; i<ptsx.size(); ++i){
 	  
 	    double shift_x = ptsx[i]-ref_x;
 	    double shift_y = ptsy[i]-ref_y;
@@ -185,7 +239,7 @@ int main() {
 	
 	  /// Start with all of the previous path points from last time (use what is already calculated instead of doing it all over)
 	  /// previous_path_x and previous_path_y are the path points still in the future, as returned by the simulator.
-	  for (int i=0; i<previous_path_x.size(); i++){
+	  for (int i=0; i<previous_path_x.size(); ++i){
 	    next_x_vals.push_back(previous_path_x[i]);
 	    next_y_vals.push_back(previous_path_y[i]);
 	  }
@@ -193,13 +247,14 @@ int main() {
 	  /// Calculate how to break up spline points so that we travel at our desired reference velocity
 	  double target_x = 30.0;
 	  double target_y = s(target_x); ///get the y value of the spline at a given x value
-	  double target_dist = sqrt((target_x)*(target_x)+(target_y)*(target_y));///////
+	  double target_dist = sqrt(target_x*target_x+target_y*target_y);
 
 	  double x_add_on = 0;
 
 	  /// Fill up the rest of our path planner after filling it with previous path points returned by the simulator
 	  /// here it will always output 50 points
-	  for (int i=1; i<= 50-previous_path_x.size(); i++){
+	  for (int i=1; i<= 50-previous_path_x.size(); ++i){
+	/////////////////try accelerating here///////////////////////////
 	    double N = (target_dist/(0.02*ref_vel/2.224)); /// number of 0.02 second time steps to get to the target at correct speed
 	    double x_point = x_add_on+(target_x)/N; /// each iteration, go one step in x and then find the spline's y value
 	    double y_point = s(x_point);
