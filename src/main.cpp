@@ -8,6 +8,9 @@
 #include "helpers.h"
 #include "json.hpp"
 #include "spline.h"
+#include "vehicle.h"////////
+#include "vehicle.cpp"////////
+#include "cost.cpp"////////
 
 // for convenience
 using nlohmann::json;
@@ -57,8 +60,20 @@ int main() {
   ///have a reference velocity to target
   double ref_vel = 0.0; //49.5; //mph
 
+  ///create the self-driving car
+  float init_s = 0.0;///
+  float init_speed = 0.0;///
+  float init_accel = 0.0;///
+  double speed_limit = 50.0;///
+  double target_speed = speed_limit - 1.0;///
+  double max_accel = 0.44;///
+  vector<double> config_data = {target_speed, max_accel};///
+  Vehicle ego = Vehicle(lane, init_s, init_speed, init_accel); ///
+  ego.configure(config_data);///
+  ego.state = "KL";///
+
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel]
+               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -107,9 +122,9 @@ int main() {
 	  }
 	  
 	  bool too_close = false;
-	  double accel_factor = 1;//////////////////////////////////
-	  double check_car_s; ////////////////////////////
-	  double check_speed;//////////////////
+	  ////////double accel_factor = 1;//////////////////////////////////
+	  ////////double check_car_s; ////////////////////////////
+	  ////////double check_speed;//////////////////
 	  //find ref_v to use
 	  for(int i=0; i<sensor_fusion.size(); ++i) {
 	    //car is in my lane
@@ -117,10 +132,10 @@ int main() {
 	    if(d<(2+4*lane+2) && d>(2+4*lane-2)) {
 	      double vx = sensor_fusion[i][3];
 	      double vy = sensor_fusion[i][4];
-	      //double check_speed = sqrt(vx*vx+vy*vy);
-	      check_speed = sqrt(vx*vx+vy*vy);
-	      //double check_car_s = sensor_fusion[i][5];
-	      check_car_s = sensor_fusion[i][5];
+	      double check_speed = sqrt(vx*vx+vy*vy);
+	      ////////check_speed = sqrt(vx*vx+vy*vy);
+	      double check_car_s = sensor_fusion[i][5];
+	      ////////check_car_s = sensor_fusion[i][5];
 
 	      check_car_s+=((double)prev_size*0.02*check_speed); //if using previous points can project s value out a time step
 	      // check s values greater than mine and s gap
@@ -132,33 +147,34 @@ int main() {
 		//if(lane>0) {
 		//  lane = 0;
 		//}
-	        std::cout << "check_speed = " << check_speed << ", car_speed = " << car_speed << std::endl;
+	        ////////std::cout << "check_speed = " << check_speed << ", car_speed = " << car_speed << std::endl;
 	      }
 	    }
 	  }
 	  
 	  if(too_close) {
-	    accel_factor = abs(60/((check_car_s-car_s))); //becomes more relevant as the distance to preceding car decreases
-	    //ref_vel -= 0.224;
-	    if(((ref_vel*accel_factor)<0.4) && ((1.25*check_speed)<car_speed)){ //don't exceed jerk limit of 10m/s2
-	      ref_vel -= ref_vel * accel_factor;
+	    ////////accel_factor = abs(60/((check_car_s-car_s))); //becomes more relevant as the distance to preceding car decreases
+	    ref_vel -= 0.224;
+	    ////////if(((ref_vel*accel_factor)<0.4) && ((0.75*check_speed)<car_speed)){ //don't exceed jerk limit of 10m/s2
+	    ////////  ref_vel -= ref_vel * accel_factor;
 	      
-	    }
-	    else if((1.25*check_speed)<car_speed) { 
-	      ref_vel -= 0.4;
-	    }
-	    else { //if slower than car ahead, speed up a bit
-	      ref_vel += 0.0;
-	    }
+	    ////////}
+	    ////////else if((0.75*check_speed)<car_speed) { 
+	    ////////  ref_vel -= 0.4;
+	    ////////}
+	    ////////else { //if slower than car ahead, speed up a bit
+	    ////////  ref_vel += 0.1;
+	    ////////}
 	  }
-	  else if(ref_vel < 49.0) {
-	    accel_factor = (49-ref_vel)*(49-ref_vel)/10; //becomes more relevant as the gap between speed and speed limit increases
-	    if(((ref_vel*accel_factor)<0.4) && (ref_vel>20)) {
-	      ref_vel += ref_vel * accel_factor;
-	    }
-	    else {
-	      ref_vel += 0.4;
-	    }
+	  else if(ref_vel < target_speed) {
+	    ////////accel_factor = (49-ref_vel)*(49-ref_vel)/10; //becomes more relevant as the gap between speed and speed limit increases
+	    ////////if(((ref_vel*accel_factor)<0.4) && (ref_vel>20)) {
+	    ////////  ref_vel += ref_vel * accel_factor;
+	    ////////}
+	    ////////else {
+	    ////////  ref_vel += 0.4;
+	    ref_vel += .224;
+	    ////////}
 	  }
 
 	  /// create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
@@ -252,8 +268,9 @@ int main() {
 	  double x_add_on = 0;
 
 	  /// Fill up the rest of our path planner after filling it with previous path points returned by the simulator
-	  /// here it will always output 50 points
-	  for (int i=1; i<= 50-previous_path_x.size(); ++i){
+	  /// here it will always output 50 points ///// changed to 100 points
+	  //for (int i=1; i<= 50-previous_path_x.size(); ++i){
+	  for (int i=1; i<= 100-previous_path_x.size(); ++i){
 	/////////////////try accelerating here///////////////////////////
 	    double N = (target_dist/(0.02*ref_vel/2.224)); /// number of 0.02 second time steps to get to the target at correct speed
 	    double x_point = x_add_on+(target_x)/N; /// each iteration, go one step in x and then find the spline's y value
