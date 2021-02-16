@@ -61,16 +61,23 @@ int main() {
   double ref_vel = 0.0; //49.5; //mph
 
   ///create the self-driving car
-  float init_s = 0.0;///
-  float init_speed = 0.0;///
-  float init_accel = 0.0;///
+  double init_s = 0.0;///
+  double init_d = 0.0;///
+  double init_speed = 0.0;///
+  double init_accel = 0.0;///
+  double init_x = 0.0;///
+  double init_y = 0.0;///
   double speed_limit = 50.0;///
   double target_speed = speed_limit - 1.0;///
   double max_accel = 0.44;///
   vector<double> config_data = {target_speed, max_accel};///
-  Vehicle ego = Vehicle(lane, init_s, init_speed, init_accel); ///
+  Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y); ///
   ego.configure(config_data);///
   ego.state = "KL";///
+
+  ///other variables
+  float ahead_horizon = 50.0;
+  float behind_horizon = 20.0;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed]
@@ -109,6 +116,31 @@ int main() {
           // Sensor Fusion Data, a list of all other cars on the same side 
           //   of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
+	  ///create a vector of Vehicles representing the sensor fusion info
+	  vector<Vehicle> other_cars;
+          for(int i=0; i<sensor_fusion.size(); ++i) {
+	    double other_x = sensor_fusion[i][1];
+	    double other_y = sensor_fusion[i][2];
+	    double other_vx = sensor_fusion[i][3];
+            double other_vy = sensor_fusion[i][4];	    
+            double other_speed = sqrt(other_vx*other_vx+other_vy*other_vy);
+            double other_s = (double)sensor_fusion[i][5];
+	    double other_d = (double)sensor_fusion[i][6];
+	    double other_a = 0.0;
+	    int other_lane = -1;
+            if(other_d>=0.0 && other_d<4.0){
+              other_lane = 0;
+            } else if (other_d>=4.0 && other_d<8.0){
+              other_lane = 1;
+            } else {
+              other_lane = 2;
+            }
+            assert(other_lane != -1);
+
+            Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y);
+            other_cars.push_back(other_car);
+	    
+	  }
 
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
@@ -120,6 +152,14 @@ int main() {
 	  if(prev_size>0) {
 	    car_s = end_path_s;
 	  }
+	  ////predict the future locations of the other vehicles.  prev_size is the number of left over 0.02 second increments 
+	  ////from the previous planned path that are returned from the simulator.  the first elements in previous_path_x and 
+	  ////previous_path_y are almost exactly where the car's localization data says it currently is, and the rest of the 
+	  ////previous_path are still future points.  Use prev_size to estimate a time step uses the assumption that the next
+	  ////time step will be nearly the same length as the previous one.
+
+	  ///get predictions for the future locations of other vehicles within a certain distance ahead and behind  
+//	  vector<Vehicle> predictions = generate_predictions(&ego, &other_cars, prev_size, ahead_horizon, behind_horizon);	  
 	  
 	  bool too_close = false;
 	  ////////double accel_factor = 1;//////////////////////////////////

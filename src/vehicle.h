@@ -13,7 +13,7 @@ class Vehicle {
  public:
   // Constructors
   Vehicle();
-  Vehicle(int lane, float s, float v, float a, string state="CS");
+  Vehicle(int lane, double d, double s, double v, double a, double x, double y, string state="CS");
 
   // Destructor
   virtual ~Vehicle();
@@ -48,7 +48,7 @@ class Vehicle {
   bool get_vehicle_ahead(map<int, vector<Vehicle>> &predictions, int lane, 
                          Vehicle &rVehicle);
 
-  vector<Vehicle> generate_predictions(int horizon=2);
+  vector<Vehicle> generate_predictions(Vehicle &ego, vector<Vehicle> &other_cars, int prev_size, double ahead_horizon, double behind_horizon);
 
   void realize_next_state(vector<Vehicle> &trajectory);
 
@@ -67,9 +67,11 @@ class Vehicle {
 
   int preferred_buffer = 6; // impacts "keep lane" behavior.
 
-  int lane, s, goal_lane, goal_s, lanes_available;
+  int lane, goal_lane, goal_s, lanes_available;
 
-  float v, target_speed, a, max_acceleration;
+  float target_speed, max_acceleration;
+
+  double d, s, v, a, x, y;
 
   string state;
 };
