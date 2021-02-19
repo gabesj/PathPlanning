@@ -12,7 +12,7 @@ using std::vector;
 // Initializes Vehicle
 Vehicle::Vehicle(){}
 
-Vehicle::Vehicle(int lane, double d, double s, double v, double a, double x, double y, string state) {
+Vehicle::Vehicle(int lane, double d, double s, double v, double a, double x, double y, double vx, double vy, double yaw, string state) {
   this->lane = lane;
   this->d = d;
   this->s = s;
@@ -20,13 +20,17 @@ Vehicle::Vehicle(int lane, double d, double s, double v, double a, double x, dou
   this->a = a;
   this->x = x;
   this->y = y;
+  this->vx = vx;
+  this->vy = vy;
+  this->yaw = yaw;
   this->state = state;
   max_acceleration = -1;
 }
 
 Vehicle::~Vehicle() {}
 
-vector<Vehicle> Vehicle::choose_next_state(map<int, vector<Vehicle>> &predictions) {
+//vector<Vehicle> Vehicle::choose_next_state(map<int, vector<Vehicle>> &predictions) {
+vector<Vehicle> Vehicle::choose_next_state(vector<Vehicle> &predictions) {
   /**
    * Here you can implement the transition_function code from the Behavior 
    *   Planning Pseudocode classroom concept.
@@ -49,6 +53,7 @@ vector<Vehicle> Vehicle::choose_next_state(map<int, vector<Vehicle>> &prediction
    *
    * TODO: Your solution here.
    */
+/*
   vector<string> states = successor_states();
   float cost;
   vector<float> costs;
@@ -66,10 +71,10 @@ vector<Vehicle> Vehicle::choose_next_state(map<int, vector<Vehicle>> &prediction
   vector<float>::iterator best_cost = min_element(begin(costs), end(costs));
   int best_idx = distance(begin(costs), best_cost);
 
-  /**
-   * TODO: Change return value here:
-   */
-  return final_trajectories[best_idx];
+  
+*/
+//  return final_trajectories[best_idx];
+  return predictions;
 }
 
 vector<string> Vehicle::successor_states() {
@@ -153,21 +158,24 @@ vector<float> Vehicle::get_kinematics(map<int, vector<Vehicle>> &predictions,
 vector<Vehicle> Vehicle::constant_speed_trajectory() {
   // Generate a constant speed trajectory.
   float next_pos = position_at(1);
-  vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s,this->v,this->a,this->x, this->y, this->state), 
-                                Vehicle(this->lane, this->d, next_pos,this->v,0, this->x, this->y, this->state)};
+  vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s,this->v,this->a,this->x, this->y, this->vx, this->vy, this->yaw, this->state), 
+                                Vehicle(this->lane, this->d, next_pos,this->v,0, this->x, this->y, this->vx, this->vy, this->yaw, this->state)};
   return trajectory;
 }
 
 vector<Vehicle> Vehicle::keep_lane_trajectory(map<int, vector<Vehicle>> &predictions) {
   // Generate a keep lane trajectory.
-  vector<Vehicle> trajectory = {Vehicle(lane, this->d, this->s, this->v, this->a, this->x, this->y, state)};
+  vector<Vehicle> trajectory = {Vehicle(lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, state)};
   vector<float> kinematics = get_kinematics(predictions, this->lane);
   float new_s = kinematics[0];
   float new_v = kinematics[1];
   float new_a = kinematics[2];
-  float new_x;///
-  float new_y;///
-  trajectory.push_back(Vehicle(this->lane, this->d, new_s, new_v, new_a, new_x, new_y, "KL"));
+  double new_x;///
+  double new_y;///
+  double new_vx;///
+  double new_vy;///
+  double new_yaw;///
+  trajectory.push_back(Vehicle(this->lane, this->d, new_s, new_v, new_a, new_x, new_y, new_vx, new_vy, new_yaw, "KL"));
   
   return trajectory;
 }
@@ -175,14 +183,20 @@ vector<Vehicle> Vehicle::keep_lane_trajectory(map<int, vector<Vehicle>> &predict
 vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, 
                                                      map<int, vector<Vehicle>> &predictions) {
   // Generate a trajectory preparing for a lane change.
-  float new_s;
-  float new_v;
-  float new_a;
+  //float new_s;
+  //float new_v;
+  //float new_a;
+  double new_s;
+  double new_v;
+  double new_a;
   double new_x;///
   double new_y;///
+  double new_vx;///
+  double new_vy;///
+  double new_yaw;///
   Vehicle vehicle_behind;
   int new_lane = this->lane + lane_direction[state];
-  vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->state)};
+  vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, this->state)};
   vector<float> curr_lane_new_kinematics = get_kinematics(predictions, this->lane);
 
   if (get_vehicle_behind(predictions, this->lane, vehicle_behind)) {
@@ -199,13 +213,16 @@ vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state,
     } else {
       best_kinematics = curr_lane_new_kinematics;
     }
-    new_s = best_kinematics[0];
-    new_v = best_kinematics[1];
-    new_a = best_kinematics[2];
+    //new_s = best_kinematics[0];
+    //new_v = best_kinematics[1];
+    //new_a = best_kinematics[2];
+    new_s = (double)best_kinematics[0];
+    new_v = (double)best_kinematics[1];
+    new_a = (double)best_kinematics[2];
     
   }
 
-  trajectory.push_back(Vehicle(this->lane, this->d, new_s, new_v, new_a, new_x, new_y, state));
+  trajectory.push_back(Vehicle(this->lane, this->d, new_s, new_v, new_a, new_x, new_y, new_vx, new_vy, new_yaw, state));
   
   return trajectory;
 }
@@ -226,10 +243,10 @@ vector<Vehicle> Vehicle::lane_change_trajectory(string state,
       return trajectory;
     }
   }
-  trajectory.push_back(Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->state));
+  trajectory.push_back(Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, this->state));
   vector<float> kinematics = get_kinematics(predictions, new_lane);
   trajectory.push_back(Vehicle(new_lane, this->d, kinematics[0], kinematics[1], 
-                               kinematics[2], this->x, this->y, state));
+                               kinematics[2], this->x, this->y, this->vx, this->vy, this->yaw, state));
   return trajectory;
 }
 
@@ -302,37 +319,22 @@ vector<Vehicle> Vehicle::generate_predictions(int horizon) {
 }
 */
 
-vector<Vehicle> generate_predictions(Vehicle ego, vector<float> sensor_fusion, int prev_size, float ahead_horizon, float behind_horizon) {
-  //generates predictions for other vehicles
-  vector<Vehicle> predictions;
-/*
-  for(int i=0; i<sensor_fusion.size(); ++i) {
-    float check_car_s = sensor_fusion[i][5];
-    if((((ego.s-check_car_s)<behind_horizon)&&(ego.s>check_car_s)) || (((check_car_s-ego.s)<ahead_horizon)&&(check_car_s>=ego.s))) {
-      double check_car_d = (double)sensor_fusion[i][6];
-      double vx = sensor_fusion[i][3];
-      double vy = sensor_fusion[i][4];	    
-      float check_speed = sqrt(vx*vx+vy*vy);
-      float check_car_s = sensor_fusion[i][5];
-      check_car_s+=((double)prev_size*0.02*check_speed);//predict future s coordinate
-      int check_lane = -1;
-      float check_accel = 0.0;///because there's no information for this assume constant speed.
-      if(d>=0.0 && d<4.0){
-        check_lane = 0;
-      } else if (d>=4.0 && d<8.0){
-        check_lane = 1;
-      } else {
-        check_lane = 2;
-      }
-      assert(check_lane != -1);
-    
-      Vehicle check_car = Vehicle(check_lane, check_car_d, check_car_s, check_speed, check_accel);
-      predictions.push_back(check_car);
-    }
-*/
-  return predictions;
 
-  
+vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, int prev_size, double ahead_horizon, double behind_horizon) {
+  //generates predictions for other vehicles between the behind_horizon and ahead_horizon
+  vector<Vehicle> predictions;
+
+  for(int i=0; i<other_cars.size(); ++i) {
+    Vehicle predict_car = other_cars[i];
+    //std::cout << "ego.s = " << ego.s << "  predict_car.s = " << predict_car.s << std::endl;
+    if(((ego.s>predict_car.s)&&((ego.s-predict_car.s)<behind_horizon)) || ((predict_car.s>=ego.s)&&((predict_car.s-ego.s)<ahead_horizon))) {
+      double timestep = 0.02 * prev_size;
+      predict_car.s += predict_car.v*timestep + predict_car.a*timestep*timestep; ///a is zero
+      predictions.push_back(predict_car);
+    }
+  }
+  std::cout << "predictions.size() = " << predictions.size() << std::endl;
+  return predictions;
 }
 
 

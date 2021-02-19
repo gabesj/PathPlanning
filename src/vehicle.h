@@ -13,13 +13,14 @@ class Vehicle {
  public:
   // Constructors
   Vehicle();
-  Vehicle(int lane, double d, double s, double v, double a, double x, double y, string state="CS");
+  Vehicle(int lane, double d, double s, double v, double a, double x, double y, double vx, double vy, double yaw, string state="CS");
 
   // Destructor
   virtual ~Vehicle();
 
   // Vehicle functions
-  vector<Vehicle> choose_next_state(map<int, vector<Vehicle>> &predictions);
+//  vector<Vehicle> choose_next_state(map<int, vector<Vehicle>> &predictions);
+  vector<Vehicle> choose_next_state(vector<Vehicle> &predictions);
 
   vector<string> successor_states();
 
@@ -48,7 +49,7 @@ class Vehicle {
   bool get_vehicle_ahead(map<int, vector<Vehicle>> &predictions, int lane, 
                          Vehicle &rVehicle);
 
-  vector<Vehicle> generate_predictions(Vehicle &ego, vector<Vehicle> &other_cars, int prev_size, double ahead_horizon, double behind_horizon);
+  vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, int prev_size, double ahead_horizon, double behind_horizon);
 
   void realize_next_state(vector<Vehicle> &trajectory);
 
@@ -71,9 +72,25 @@ class Vehicle {
 
   float target_speed, max_acceleration;
 
-  double d, s, v, a, x, y;
+  double d, s, v, a, x, y, vx, vy, yaw;
 
   string state;
 };
 
 #endif  // VEHICLE_H
+
+///a Vehicle can have
+// lane, d, s, v, a, x, y, vx, vy, yaw, state
+
+///The Vehicle for the self-driving car has:
+// lane, d, s, v,  , x, y,   ,   , yaw, state
+
+///The Vehicles for the other cars have:
+// lane, d, s, v,  , x, y, vx, vy,    ,    
+
+
+
+
+
+
+

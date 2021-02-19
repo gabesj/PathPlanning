@@ -67,20 +67,24 @@ int main() {
   double init_accel = 0.0;///
   double init_x = 0.0;///
   double init_y = 0.0;///
+  double init_vx = 0.0;///
+  double init_vy = 0.0;///
+  double init_yaw = 0.0;///
   double speed_limit = 50.0;///
   double target_speed = speed_limit - 1.0;///
   double max_accel = 0.44;///
   vector<double> config_data = {target_speed, max_accel};///
-  Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y); ///
+  Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); ///
   ego.configure(config_data);///
   ego.state = "KL";///
 
   ///other variables
-  float ahead_horizon = 50.0;
-  float behind_horizon = 20.0;
+  double ahead_horizon = 50.0;
+  double behind_horizon = 20.0;
+  int first_sweep = 1;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed]
+               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed,&ego,&ahead_horizon,&behind_horizon,&first_sweep]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -99,12 +103,18 @@ int main() {
           // j[1] is the data JSON object
           
           // Main car's localization Data
-          double car_x = j[1]["x"];
-          double car_y = j[1]["y"];
-          double car_s = j[1]["s"];
-          double car_d = j[1]["d"];
-          double car_yaw = j[1]["yaw"];
-          double car_speed = j[1]["speed"];
+          //double car_x = j[1]["x"];
+          //double car_y = j[1]["y"];
+          //double car_s = j[1]["s"];
+          //double car_d = j[1]["d"];
+          //double car_yaw = j[1]["yaw"];
+          //double car_speed = j[1]["speed"];
+	  ego.x = j[1]["x"];
+          ego.y = j[1]["y"];
+          ego.s = j[1]["s"];
+          ego.d = j[1]["d"];
+          ego.yaw = j[1]["yaw"];
+          ego.v = j[1]["speed"];
 
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
@@ -127,6 +137,7 @@ int main() {
             double other_s = (double)sensor_fusion[i][5];
 	    double other_d = (double)sensor_fusion[i][6];
 	    double other_a = 0.0;
+	    double other_yaw = 0.0;
 	    int other_lane = -1;
             if(other_d>=0.0 && other_d<4.0){
               other_lane = 0;
@@ -136,22 +147,25 @@ int main() {
               other_lane = 2;
             }
             assert(other_lane != -1);
-
-            Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y);
+	    ///assumes that velocity is in the direction of the lane.  This prevents misattributing a curve in the road to a lane change,
+	    /// but it also does not reflect the lateral and straight differentiation in an actual lane change.
+            Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y, other_vx, other_vy, other_yaw);
             other_cars.push_back(other_car);
 	    
 	  }
-
+	  std::cout << "other_cars.size() = " << other_cars.size() << std::endl;
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
            */
 	  /// size of the last calculated path
 	  int prev_size = previous_path_x.size();
-
+/*
 	  if(prev_size>0) {
-	    car_s = end_path_s;
+	    //car_s = end_path_s;
+	    ego.s = end_path_s;
 	  }
+*/
 	  ////predict the future locations of the other vehicles.  prev_size is the number of left over 0.02 second increments 
 	  ////from the previous planned path that are returned from the simulator.  the first elements in previous_path_x and 
 	  ////previous_path_y are almost exactly where the car's localization data says it currently is, and the rest of the 
@@ -159,8 +173,15 @@ int main() {
 	  ////time step will be nearly the same length as the previous one.
 
 	  ///get predictions for the future locations of other vehicles within a certain distance ahead and behind  
-//	  vector<Vehicle> predictions = generate_predictions(&ego, &other_cars, prev_size, ahead_horizon, behind_horizon);	  
+	  std::cout << "ego.s = " << ego.s << std::endl;
+	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size, ahead_horizon, behind_horizon);	  
 	  
+	  ///choose the best state for the next time step
+	  /// the "Vehicles" in trajectory are used just to hold lane and speed info for the trajectory
+	  vector<Vehicle> trajectory = ego.choose_next_state(predictions);
+
+
+
 	  bool too_close = false;
 	  ////////double accel_factor = 1;//////////////////////////////////
 	  ////////double check_car_s; ////////////////////////////
@@ -179,7 +200,7 @@ int main() {
 
 	      check_car_s+=((double)prev_size*0.02*check_speed); //if using previous points can project s value out a time step
 	      // check s values greater than mine and s gap
-	      if((check_car_s > car_s) && ((check_car_s-car_s) < 30)) {//other car is ahead of me by less than 30m
+	      if((check_car_s > ego.s) && ((check_car_s-ego.s) < 30)) {//other car is ahead of me by less than 30m
 	        // Do some logic here, lower reference velocity so we don't crash into the car in front of us
 		// could also flag to try to change lanes.
 		//ref_vel = 29.5; // mph
@@ -224,25 +245,25 @@ int main() {
 	  
 	  /// reference x, y, yaw states
 	  /// either we will reference the starting point as where the car is or at the previous paths end point
-	  double ref_x = car_x;
-	  double ref_y = car_y;
-	  double ref_yaw = deg2rad(car_yaw); 
+	  double ref_x = ego.x;
+	  double ref_y = ego.y;
+	  double ref_yaw = deg2rad(ego.yaw); 
 
 	  ///if previous size is almost empty, use the car as starting reference and extrapolate the previous point
 	  if(prev_size < 2){
 	    //double prev_car_x = car_x - cos(car_yaw);
 	    //double prev_car_y = car_y - sin(car_yaw);
-	    double prev_car_x = car_x - cos(ref_yaw);
-	    double prev_car_y = car_y - sin(ref_yaw);
+	    double prev_car_x = ego.x - cos(ref_yaw);
+	    double prev_car_y = ego.y - sin(ref_yaw);
 	    
 	    ptsx.push_back(prev_car_x);
-	    ptsx.push_back(car_x);
+	    ptsx.push_back(ego.x);
 	
 	    ptsy.push_back(prev_car_y);
-	    ptsy.push_back(car_y);
+	    ptsy.push_back(ego.y);
 	  }
 	  /// otherwise use the previous path's end point as a starting reference
-	  else {
+	  else if(prev_size < 5) {
 	    ref_x = previous_path_x[prev_size-1];
 	    ref_y = previous_path_y[prev_size-1];
 	    
@@ -257,11 +278,44 @@ int main() {
 	    ptsy.push_back(ref_y_prev);
 	    ptsy.push_back(ref_y);
 	  }
+	  /// otherwise use the previous path's end point as a starting reference
+	  else {
+	    ref_x = previous_path_x[prev_size-1];
+	    ref_y = previous_path_y[prev_size-1];
+	    
+	    double ref_x_prev = previous_path_x[prev_size-5];
+	    double ref_y_prev = previous_path_y[prev_size-5];
+	    ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
 
+	    /// use two points that make the path tangent to the previous path's end point
+	    ptsx.push_back(ref_x_prev);
+	    ptsx.push_back(ref_x);
+
+	    ptsy.push_back(ref_y_prev);
+	    ptsy.push_back(ref_y);
+	  }
 	  /// In Frenet coordinates find three future waypoints ahead of the starting reference at 30,60, and 90 meters ahead
-	  vector<double> next_wp0 = getXY(car_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-	  vector<double> next_wp1 = getXY(car_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-	  vector<double> next_wp2 = getXY(car_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	  //vector<double> next_wp0 = getXY(ego.s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	  //vector<double> next_wp1 = getXY(ego.s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	  //vector<double> next_wp2 = getXY(ego.s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	  std::cout << "end_path_s = " << end_path_s << std::endl;
+	  
+	  vector<double> next_wp0;
+	  vector<double> next_wp1;
+	  vector<double> next_wp2;
+	  
+	  if(first_sweep) {
+	    next_wp0 = getXY(ego.s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    next_wp1 = getXY(ego.s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    next_wp2 = getXY(ego.s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    std::cout << "first_sweep" << std::endl;
+	  }
+	  else {
+	    next_wp0 = getXY(end_path_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    next_wp1 = getXY(end_path_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    next_wp2 = getXY(end_path_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
+	    std::cout << "else" << std::endl;
+	  }
 
 	  ptsx.push_back(next_wp0[0]);
 	  ptsx.push_back(next_wp1[0]);
@@ -354,13 +408,15 @@ int main() {
   	    next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
 	  }	  
 	*/
+	  /// for help in predicting car locations 
+	  
 
 	  json msgJson;
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
           auto msg = "42[\"control\","+ msgJson.dump()+"]";
-
+	
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }  // end "telemetry" if
       } else {
@@ -368,6 +424,7 @@ int main() {
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
+    first_sweep = 0;/////////////
     }  // end websocket if
   }); // end h.onMessage
 
