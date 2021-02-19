@@ -81,7 +81,7 @@ int main() {
   ///other variables
   double ahead_horizon = 50.0;
   double behind_horizon = 20.0;
-  int first_sweep = 1;
+  int first_sweep = true;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed,&ego,&ahead_horizon,&behind_horizon,&first_sweep]
@@ -262,29 +262,14 @@ int main() {
 	    ptsy.push_back(prev_car_y);
 	    ptsy.push_back(ego.y);
 	  }
-	  /// otherwise use the previous path's end point as a starting reference
-	  else if(prev_size < 5) {
-	    ref_x = previous_path_x[prev_size-1];
-	    ref_y = previous_path_y[prev_size-1];
-	    
-	    double ref_x_prev = previous_path_x[prev_size-2];
-	    double ref_y_prev = previous_path_y[prev_size-2];
-	    ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
-
-	    /// use two points that make the path tangent to the previous path's end point
-	    ptsx.push_back(ref_x_prev);
-	    ptsx.push_back(ref_x);
-
-	    ptsy.push_back(ref_y_prev);
-	    ptsy.push_back(ref_y);
-	  }
+	  
 	  /// otherwise use the previous path's end point as a starting reference
 	  else {
 	    ref_x = previous_path_x[prev_size-1];
 	    ref_y = previous_path_y[prev_size-1];
 	    
-	    double ref_x_prev = previous_path_x[prev_size-5];
-	    double ref_y_prev = previous_path_y[prev_size-5];
+	    double ref_x_prev = previous_path_x[prev_size-2];
+	    double ref_y_prev = previous_path_y[prev_size-2];
 	    ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
 
 	    /// use two points that make the path tangent to the previous path's end point
@@ -424,7 +409,7 @@ int main() {
         std::string msg = "42[\"manual\",{}]";
         ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
       }
-    first_sweep = 0;/////////////
+    first_sweep = false;/////////////
     }  // end websocket if
   }); // end h.onMessage
 

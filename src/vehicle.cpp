@@ -53,12 +53,17 @@ vector<Vehicle> Vehicle::choose_next_state(vector<Vehicle> &predictions) {
    *
    * TODO: Your solution here.
    */
-/*
+
   vector<string> states = successor_states();
+  std::cout << "states.size() = " << states.size() << std::endl;
+  //std::cout << "states[0] = " << states[0] << std::endl;
+  for(int i=0; i<states.size(); ++i){
+    std::cout << "successor_states = " << states[i] << std::endl;
+  }
   float cost;
   vector<float> costs;
   vector<vector<Vehicle>> final_trajectories;
-
+/*
   for (vector<string>::iterator it = states.begin(); it != states.end(); ++it) {
     vector<Vehicle> trajectory = generate_trajectory(*it, predictions);
     if (trajectory.size() != 0) {
@@ -81,6 +86,7 @@ vector<string> Vehicle::successor_states() {
   // Provides the possible next states given the current state for the FSM 
   //   discussed in the course, with the exception that lane changes happen 
   //   instantaneously, so LCL and LCR can only transition back to KL.
+  int lanes_available = 3;
   vector<string> states;
   states.push_back("KL");
   string state = this->state;
@@ -88,12 +94,12 @@ vector<string> Vehicle::successor_states() {
     states.push_back("PLCL");
     states.push_back("PLCR");
   } else if (state.compare("PLCL") == 0) {
-    if (lane != lanes_available - 1) {
+    if (lane != 0) {
       states.push_back("PLCL");
       states.push_back("LCL");
     }
   } else if (state.compare("PLCR") == 0) {
-    if (lane != 0) {
+    if (lane != lanes_available - 1) {
       states.push_back("PLCR");
       states.push_back("LCR");
     }
@@ -103,26 +109,24 @@ vector<string> Vehicle::successor_states() {
   return states;
 }
 
-vector<Vehicle> Vehicle::generate_trajectory(string state, 
-                                             map<int, vector<Vehicle>> &predictions) {
+vector<Vehicle> Vehicle::generate_trajectory(string state, vector<Vehicle> &predictions) {
   // Given a possible next state, generate the appropriate trajectory to realize
   //   the next state.
   vector<Vehicle> trajectory;
-  if (state.compare("CS") == 0) {
-    trajectory = constant_speed_trajectory();
-  } else if (state.compare("KL") == 0) {
-    trajectory = keep_lane_trajectory(predictions);
-  } else if (state.compare("LCL") == 0 || state.compare("LCR") == 0) {
-    trajectory = lane_change_trajectory(state, predictions);
-  } else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0) {
-    trajectory = prep_lane_change_trajectory(state, predictions);
-  }
+//  if (state.compare("CS") == 0) {
+//    trajectory = constant_speed_trajectory();
+//  } else if (state.compare("KL") == 0) {
+//    trajectory = keep_lane_trajectory(predictions);
+//  } else if (state.compare("LCL") == 0 || state.compare("LCR") == 0) {
+//    trajectory = lane_change_trajectory(state, predictions);
+//  } else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0) {
+//    trajectory = prep_lane_change_trajectory(state, predictions);
+//  }
 
   return trajectory;
 }
 
-vector<float> Vehicle::get_kinematics(map<int, vector<Vehicle>> &predictions, 
-                                      int lane) {
+vector<float> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane) {
   // Gets next timestep kinematics (position, velocity, acceleration) 
   //   for a given lane. Tries to choose the maximum velocity and acceleration, 
   //   given other vehicle positions and accel/velocity constraints.
@@ -163,7 +167,7 @@ vector<Vehicle> Vehicle::constant_speed_trajectory() {
   return trajectory;
 }
 
-vector<Vehicle> Vehicle::keep_lane_trajectory(map<int, vector<Vehicle>> &predictions) {
+vector<Vehicle> Vehicle::keep_lane_trajectory(vector<Vehicle> &predictions) {
   // Generate a keep lane trajectory.
   vector<Vehicle> trajectory = {Vehicle(lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, state)};
   vector<float> kinematics = get_kinematics(predictions, this->lane);
@@ -180,8 +184,7 @@ vector<Vehicle> Vehicle::keep_lane_trajectory(map<int, vector<Vehicle>> &predict
   return trajectory;
 }
 
-vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, 
-                                                     map<int, vector<Vehicle>> &predictions) {
+vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, vector<Vehicle> &predictions) {
   // Generate a trajectory preparing for a lane change.
   //float new_s;
   //float new_v;
@@ -227,15 +230,14 @@ vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state,
   return trajectory;
 }
 
-vector<Vehicle> Vehicle::lane_change_trajectory(string state, 
-                                                map<int, vector<Vehicle>> &predictions) {
+vector<Vehicle> Vehicle::lane_change_trajectory(string state, vector<Vehicle> &predictions) {
   // Generate a lane change trajectory.
   int new_lane = this->lane + lane_direction[state];
   vector<Vehicle> trajectory;
   Vehicle next_lane_vehicle;
   // Check if a lane change is possible (check if another vehicle occupies 
   //   that spot).
-  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
+/*  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
        it != predictions.end(); ++it) {
     next_lane_vehicle = it->second[0];
     if (next_lane_vehicle.s == this->s && next_lane_vehicle.lane == new_lane) {
@@ -247,7 +249,7 @@ vector<Vehicle> Vehicle::lane_change_trajectory(string state,
   vector<float> kinematics = get_kinematics(predictions, new_lane);
   trajectory.push_back(Vehicle(new_lane, this->d, kinematics[0], kinematics[1], 
                                kinematics[2], this->x, this->y, this->vx, this->vy, this->yaw, state));
-  return trajectory;
+*/  return trajectory;
 }
 
 void Vehicle::increment(int dt = 1) {
@@ -258,14 +260,13 @@ float Vehicle::position_at(int t) {
   return this->s + this->v*t + this->a*t*t/2.0;
 }
 
-bool Vehicle::get_vehicle_behind(map<int, vector<Vehicle>> &predictions, 
-                                 int lane, Vehicle &rVehicle) {
+bool Vehicle::get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle) {
   // Returns a true if a vehicle is found behind the current vehicle, false 
   //   otherwise. The passed reference rVehicle is updated if a vehicle is found.
   int max_s = -1;
   bool found_vehicle = false;
   Vehicle temp_vehicle;
-  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
+/*  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
        it != predictions.end(); ++it) {
     temp_vehicle = it->second[0];
     if (temp_vehicle.lane == this->lane && temp_vehicle.s < this->s 
@@ -275,22 +276,20 @@ bool Vehicle::get_vehicle_behind(map<int, vector<Vehicle>> &predictions,
       found_vehicle = true;
     }
   }
-  
+*/  
   return found_vehicle;
 }
 
-bool Vehicle::get_vehicle_ahead(map<int, vector<Vehicle>> &predictions, 
-                                int lane, Vehicle &rVehicle) {
+bool Vehicle::get_vehicle_ahead(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle) {
   // Returns a true if a vehicle is found ahead of the current vehicle, false 
   //   otherwise. The passed reference rVehicle is updated if a vehicle is found.
-  int min_s = this->goal_s;
+  double min_s;// = this->goal_s;
   bool found_vehicle = false;
   Vehicle temp_vehicle;
-  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
-       it != predictions.end(); ++it) {
-    temp_vehicle = it->second[0];
-    if (temp_vehicle.lane == this->lane && temp_vehicle.s > this->s 
-        && temp_vehicle.s < min_s) {
+  //for (vector<Vehicle>::iterator it = predictions.begin(); it != predictions.end(); ++it) {
+  for (int i=0; i<predictions.size(); ++i) {
+    temp_vehicle = predictions[i];//it->first[0];
+    if (temp_vehicle.lane == this->lane && temp_vehicle.s > this->s && temp_vehicle.s < min_s) {
       min_s = temp_vehicle.s;
       rVehicle = temp_vehicle;
       found_vehicle = true;
