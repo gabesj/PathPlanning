@@ -19,32 +19,34 @@ class Vehicle {
   virtual ~Vehicle();
 
   // Vehicle functions
-//  vector<Vehicle> choose_next_state(map<int, vector<Vehicle>> &predictions);
-  vector<Vehicle> choose_next_state(vector<Vehicle> &predictions);
+
+  vector<Vehicle> choose_next_state(vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   vector<string> successor_states();
 
-  vector<Vehicle> generate_trajectory(string state, vector<Vehicle> &predictions);
+  vector<Vehicle> generate_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
 
-  vector<float> get_kinematics(vector<Vehicle> &predictions, int lane);
+  vector<double> get_kinematics(vector<Vehicle> &predictions, int lane, Vehicle &predicted_self);
 
   vector<Vehicle> constant_speed_trajectory();
 
-  vector<Vehicle> keep_lane_trajectory(vector<Vehicle> &predictions);
+  vector<Vehicle> keep_lane_trajectory(vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   vector<Vehicle> lane_change_trajectory(string state, vector<Vehicle> &predictions);
 
-  vector<Vehicle> prep_lane_change_trajectory(string state, vector<Vehicle> &predictions);
+  vector<Vehicle> prep_lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   void increment(int dt);
 
   float position_at(int t);
 
-  bool get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle);
+  bool get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle, Vehicle &predicted_self);
 
-  bool get_vehicle_ahead(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle);
+  bool get_vehicle_ahead(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle, Vehicle &predicted_self);
 
-  vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, int prev_size, double ahead_horizon, double behind_horizon);
+  vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, double timesteps);
+
+  Vehicle predict_self(Vehicle ego, double timesteps);
 
   void realize_next_state(vector<Vehicle> &trajectory);
 
@@ -61,11 +63,11 @@ class Vehicle {
 
   int L = 1;
 
-  int preferred_buffer = 6; // impacts "keep lane" behavior.
+  int preferred_buffer = 15; // impacts "keep lane" behavior.
 
   int lane, goal_lane, goal_s, lanes_available;
 
-  float target_speed, max_acceleration;
+  double target_speed, max_acceleration, ahead_horizon, behind_horizon;
 
   double d, s, v, a, x, y, vx, vy, yaw;
 

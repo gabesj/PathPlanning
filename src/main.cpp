@@ -70,21 +70,23 @@ int main() {
   double init_vx = 0.0;///
   double init_vy = 0.0;///
   double init_yaw = 0.0;///
-  double speed_limit = 50.0;///
-  double target_speed = speed_limit - 1.0;///
-  double max_accel = 0.44;///
-  vector<double> config_data = {target_speed, max_accel};///
+  double speed_limit = 50.0;///mph
+  double target_speed = (speed_limit - 1.0) / 2.224;/////Dividing by 2.224 converts mph to m/s
+  double max_accel = 10-1; // m/s^2         0.2;///0.44;///
+  double ahead_horizon = 50.0;
+  double behind_horizon = 20.0;
+  double ref_accel = 0.0;
+  vector<double> config_data = {target_speed, max_accel, ahead_horizon, behind_horizon};///
   Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); ///
   ego.configure(config_data);///
   ego.state = "KL";///
 
   ///other variables
-  double ahead_horizon = 50.0;
-  double behind_horizon = 20.0;
   int first_sweep = true;
+  int send_path_size = 50;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&target_speed,&ego,&ahead_horizon,&behind_horizon,&first_sweep]
+               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&ego,&first_sweep,&send_path_size,&ref_accel]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -115,7 +117,10 @@ int main() {
           ego.d = j[1]["d"];
           ego.yaw = j[1]["yaw"];
           ego.v = j[1]["speed"];
-
+	  ego.v = ego.v/2.224;/////Dividing by 2.224 converts mph to m/s
+	  //std::cout << "ego.v = " << ego.v << std::endl;
+	  ego.a = ref_accel;
+	  
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
@@ -133,7 +138,7 @@ int main() {
 	    double other_y = sensor_fusion[i][2];
 	    double other_vx = sensor_fusion[i][3];
             double other_vy = sensor_fusion[i][4];	    
-            double other_speed = sqrt(other_vx*other_vx+other_vy*other_vy);
+            double other_speed = sqrt(other_vx*other_vx+other_vy*other_vy); // in m/sec
             double other_s = (double)sensor_fusion[i][5];
 	    double other_d = (double)sensor_fusion[i][6];
 	    double other_a = 0.0;
@@ -151,7 +156,7 @@ int main() {
 	    /// but it also does not reflect the lateral and straight differentiation in an actual lane change.
             Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y, other_vx, other_vy, other_yaw);
             other_cars.push_back(other_car);
-	    
+	    std::cout << "other car " << i << " speed is " << other_speed << std::endl;
 	  }
 	  std::cout << "other_cars.size() = " << other_cars.size() << std::endl;
           /**
@@ -160,6 +165,15 @@ int main() {
            */
 	  /// size of the last calculated path
 	  int prev_size = previous_path_x.size();
+	  /// approximate average number of 0.02 second increments in previous time steps
+	  double timestep_running_avg;
+	  if(first_sweep){
+	    timestep_running_avg = 10;
+	  }
+	  else {
+	    timestep_running_avg = 0.1*(send_path_size-prev_size) + 0.9*timestep_running_avg;
+	  }
+	  std::cout << "last size = " << send_path_size-prev_size << ", timestep_running_avg = " << timestep_running_avg << std::endl;
 /*
 	  if(prev_size>0) {
 	    //car_s = end_path_s;
@@ -169,19 +183,27 @@ int main() {
 	  ////predict the future locations of the other vehicles.  prev_size is the number of left over 0.02 second increments 
 	  ////from the previous planned path that are returned from the simulator.  the first elements in previous_path_x and 
 	  ////previous_path_y are almost exactly where the car's localization data says it currently is, and the rest of the 
-	  ////previous_path are still future points.  Use prev_size to estimate a time step uses the assumption that the next
-	  ////time step will be nearly the same length as the previous one.
+	  ////previous_path are still future points.
 
 	  ///get predictions for the future locations of other vehicles within a certain distance ahead and behind  
 	  std::cout << "ego.s = " << ego.s << std::endl;
-	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size, ahead_horizon, behind_horizon);	  
-	  
+	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size); //timestep_running_avg);	  
+	  Vehicle predicted_self = predict_self(ego, prev_size); // timestep_running_avg);
 	  ///choose the best state for the next time step
 	  /// the "Vehicles" in trajectory are used just to hold lane and speed info for the trajectory
-	  vector<Vehicle> trajectory = ego.choose_next_state(predictions);
+	  vector<Vehicle> trajectory = ego.choose_next_state(predictions, predicted_self);
 
-
-
+	  
+	  if(first_sweep) {
+	    ref_accel = ego.max_acceleration;
+	  }
+	  else {
+	    ref_accel = trajectory[1].a;//////////////////////
+	  }
+	  std::cout << "ego.v = " << ego.v << std::endl;
+          std::cout << "ego.a = " << ego.a << std::endl;
+	  std::cout << "ref_accel = " << ref_accel << std::endl;
+/*
 	  bool too_close = false;
 	  ////////double accel_factor = 1;//////////////////////////////////
 	  ////////double check_car_s; ////////////////////////////
@@ -198,9 +220,13 @@ int main() {
 	      double check_car_s = sensor_fusion[i][5];
 	      ////////check_car_s = sensor_fusion[i][5];
 
-	      check_car_s+=((double)prev_size*0.02*check_speed); //if using previous points can project s value out a time step
+	      ///check_car_s+=((double)prev_size*0.02*check_speed); //if using previous points can project s value out a time step
+	      check_car_s+=(timestep_running_avg*0.02*check_speed); 
 	      // check s values greater than mine and s gap
-	      if((check_car_s > ego.s) && ((check_car_s-ego.s) < 30)) {//other car is ahead of me by less than 30m
+	      //if((check_car_s > ego.s) && ((check_car_s-ego.s) < 30)) {//other car is ahead of me by less than 30m
+	      double my_next_s = ego.s + (timestep_running_avg*0.02*ego.v);
+	      //if((check_car_s > ego.s) && ((check_car_s-ego.s) < 30)) {
+	      if((check_car_s > my_next_s) && ((check_car_s-my_next_s) < 30)) {
 	        // Do some logic here, lower reference velocity so we don't crash into the car in front of us
 		// could also flag to try to change lanes.
 		//ref_vel = 29.5; // mph
@@ -237,7 +263,13 @@ int main() {
 	    ref_vel += .224;
 	    ////////}
 	  }
-
+*/
+	  
+	  //std::cout << "too close? " << too_close << " , ref_vel = " << ref_vel << std::endl;
+	  //prevent backward motion on first frame if starting at 0 velocity and a car is in front
+//	  if(ref_vel<0){
+//	    ref_vel += .3;
+//	  }
 	  /// create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
   	  /// later we will interpolate these waypoints with a spline and fill it in with more points that control speed.
 	  vector<double> ptsx;
@@ -293,13 +325,13 @@ int main() {
 	    next_wp0 = getXY(ego.s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp1 = getXY(ego.s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp2 = getXY(ego.s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-	    std::cout << "first_sweep" << std::endl;
+	    //std::cout << "first_sweep" << std::endl;
 	  }
 	  else {
 	    next_wp0 = getXY(end_path_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp1 = getXY(end_path_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp2 = getXY(end_path_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
-	    std::cout << "else" << std::endl;
+	    //std::cout << "else" << std::endl;
 	  }
 
 	  ptsx.push_back(next_wp0[0]);
@@ -340,19 +372,54 @@ int main() {
 	  }
 
 	  /// Calculate how to break up spline points so that we travel at our desired reference velocity
-	  double target_x = 30.0;
-	  double target_y = s(target_x); ///get the y value of the spline at a given x value
-	  double target_dist = sqrt(target_x*target_x+target_y*target_y);
+//	  double target_x = 30.0;
+//	  double target_y = s(target_x); ///get the y value of the spline at a given x value
+//	  double target_dist = sqrt(target_x*target_x+target_y*target_y);
 
 	  double x_add_on = 0;
-
+	  double fut_vel = 0;
+	  
+	  if(prev_size > 12) {
+	    double x1 = previous_path_x[prev_size-1];
+	    double y1 = previous_path_y[prev_size-1];
+	    double x2 = previous_path_x[prev_size-12];
+	    double y2 = previous_path_y[prev_size-12];
+	    fut_vel = distance(x1,y1,x2,y2)/(11*0.02);
+	    std::cout << "(x1,y1) = (" << x1 << "," << y1 << ") and (x2,y2) = (" << x2 << "," << y2 << ")" << std::endl;
+	  }
+	  std::cout << "fut_vel = " << fut_vel << std::endl;
+	  double pos_add_on = fut_vel * 0.02; ///ego.v * 0.02; ///position increase at current velocity per 0.02 timestep 
+ 	  double incr_vel = ref_accel * 0.02; ///velocity increase increment due to acceleration per 0.02 second timestep
+	  double incr_pos = incr_vel * 0.02; //incr_vel * 0.02; ///position increase increment due to acceleration per 0.02 second timestep
+	  double spd_limit_incr = ego.target_speed * 0.02;
 	  /// Fill up the rest of our path planner after filling it with previous path points returned by the simulator
 	  /// here it will always output 50 points ///// changed to 100 points
 	  //for (int i=1; i<= 50-previous_path_x.size(); ++i){
-	  for (int i=1; i<= 100-previous_path_x.size(); ++i){
+	  for (int i=1; i<= send_path_size-previous_path_x.size(); ++i){
 	/////////////////try accelerating here///////////////////////////
-	    double N = (target_dist/(0.02*ref_vel/2.224)); /// number of 0.02 second time steps to get to the target at correct speed
-	    double x_point = x_add_on+(target_x)/N; /// each iteration, go one step in x and then find the spline's y value
+	    /// number of 0.02 second time steps to get to the target at current speed. Dividing by 2.224 converts mph to meters/sec
+	    //double N = (target_dist/(0.02*ref_vel/2.224)); 
+	    //double inc_accel = ref_accel * 10 / 1275 * 0.9; /////////don't exceed 90% of the allowable acceleration limit
+	    //vel_add_on += inc_accel;
+	    	    
+	    ///double x_point = x_add_on+(target_x)/N; /// each iteration, go one step in x and then find the spline's y value
+	    /// the distance between each point varies according to the acceleration
+	    double x_point;
+	    if ((pos_add_on+i*incr_pos)>(ego.target_speed*0.02)) { // going over speed limit for this 0.02 second interval
+	      x_point = x_add_on + ego.target_speed*0.02;
+	    }
+	    else {
+	      x_point = x_add_on + pos_add_on + i*incr_pos;
+	    }
+	    
+	    //double x_point = x_add_on + pos_add_on + i*incr_pos;
+
+	    //incr_pos += incr_pos;
+	    //if ((x_point*incr_vel*i/2*0.02+ego.v)>=ego.target_speed) {
+	    //  x_point = x_point - incr_pos;
+	    //}
+	    std::cout << "x_point = " << x_point << " x_add_on = " << x_add_on << " pos_add_on = " << pos_add_on << " incr_pos = " << incr_pos << std::endl;
+	    
 	    double y_point = s(x_point);
 
 	    x_add_on = x_point;
