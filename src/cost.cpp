@@ -13,8 +13,12 @@ using std::vector;
 /**
  * TODO: change weights for cost functions.
  */
-const float REACH_GOAL = pow(10, 6);
-const float EFFICIENCY = pow(10, 5);
+//const float REACH_GOAL = pow(10, 6);
+//const float EFFICIENCY = pow(10, 5);
+const float COLLISION = 1;//pow(10, 6);
+const float SPEED = 1;//pow(10, 5);
+const float LANE_CHANGE = 1;//pow(10, 5);
+
 
 // Here we have provided two possible suggestions for cost functions, but feel 
 //   free to use your own! The weighted cost over all cost functions is computed
@@ -22,6 +26,43 @@ const float EFFICIENCY = pow(10, 5);
 //   your implementation of the cost functions below. Please see get_helper_data
 //   for details on how the helper data is computed.
 
+
+////////////////////////////try collision cost, speed cost, lane change cost
+
+float collision_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions) {
+  float cost = 0.0;
+  double ahead_limit = predicted_self.s + predicted_self.preferred_buffer;
+  double behind_limit = predicted_self.s - predicted_self.preferred_buffer;
+  for (int i=0; i<predictions.size(); ++i) {
+    if ((predicted_self.state.compare("KL") != 0) && trajectory[0].lane == predictions[i].lane && (predictions[i].s <= ahead_limit && predictions[i].s >= behind_limit)) {
+      std::cout << "lane change not safe - blocked" << std::endl;
+      cost = 1;
+    }
+  }
+  return cost;
+}
+
+float speed_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions) {
+  //Cost is minimized as the trajectory's speeds approach the speed limit
+  //float cost = (2.0*predicted_self.target_speed - trajectory[0].v - trajectory[1].v)/predicted_self.target_speed;
+  float cost = (predicted_self.target_speed - trajectory[0].v) / predicted_self.target_speed;
+  std::cout << "   trajectory[0].v = " << trajectory[0].v << "     trajectory[1].v = " << trajectory[1].v << std::endl;
+  return cost;
+}
+
+float lane_change_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions) {
+  //Lane changing is penalized a little to prevent frivolous lane changing unless there is a decent cost benefit elsewhere
+  float cost = 0.0;
+  if (trajectory[0].lane != trajectory[1].lane) {
+    cost = 0.05;
+  }
+  return cost;
+}
+
+
+
+
+/*
 float goal_distance_cost(const Vehicle &vehicle, 
                          const vector<Vehicle> &trajectory, 
                          const map<int, vector<Vehicle>> &predictions, 
@@ -83,17 +124,17 @@ float lane_speed(const map<int, vector<Vehicle>> &predictions, int lane) {
   // Found no vehicle in the lane
   return -1.0;
 }
+*/
 
-float calculate_cost(const Vehicle &vehicle, 
-                     const map<int, vector<Vehicle>> &predictions, 
+float calculate_cost(const Vehicle &predicted_self, 
+                     const vector<Vehicle> &predictions, 
                      const vector<Vehicle> &trajectory) {
   // Sum weighted cost functions to get total cost for trajectory.
-  map<string, float> trajectory_data = get_helper_data(vehicle, trajectory, 
-                                                       predictions);
+  //map<string, float> trajectory_data = get_helper_data(vehicle, trajectory, predictions);
   float cost = 0.0;
 
   // Add additional cost functions here.
-  vector<std::function<float(const Vehicle &, const vector<Vehicle> &, 
+/*  vector<std::function<float(const Vehicle &, const vector<Vehicle> &, 
                              const map<int, vector<Vehicle>> &, 
                              map<string, float> &)
     >> cf_list = {goal_distance_cost, inefficiency_cost};
@@ -102,12 +143,23 @@ float calculate_cost(const Vehicle &vehicle,
   for (int i = 0; i < cf_list.size(); ++i) {
     float new_cost = weight_list[i]*cf_list[i](vehicle, trajectory, predictions, 
                                                trajectory_data);
+*/
+  vector<std::function<float(const Vehicle &, const vector<Vehicle> &, const vector<Vehicle> &)
+    >> cf_list = {collision_cost, speed_cost, lane_change_cost};
+  vector<float> weight_list = {COLLISION, SPEED, LANE_CHANGE};
+
+  for (int i = 0; i < cf_list.size(); ++i) {
+    float new_cost = weight_list[i]*cf_list[i](predicted_self, trajectory, predictions);
+    if (i==0) {std::cout << "  Collision Cost = " << new_cost;}
+    if (i==1) {std::cout << "  Speed Cost = " << new_cost;}
+    if (i==2) {std::cout << "  Lane Change Cost = " << new_cost << std::endl;}
     cost += new_cost;
   }
 
   return cost;
 }
 
+/*
 map<string, float> get_helper_data(const Vehicle &vehicle, 
                                    const vector<Vehicle> &trajectory, 
                                    const map<int, vector<Vehicle>> &predictions) {
@@ -140,3 +192,4 @@ map<string, float> get_helper_data(const Vehicle &vehicle,
     
   return trajectory_data;
 }
+*/

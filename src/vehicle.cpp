@@ -64,11 +64,15 @@ vector<Vehicle> Vehicle::choose_next_state(vector<Vehicle> &predictions, Vehicle
   float cost;
   vector<float> costs;
   vector<vector<Vehicle>> final_trajectories;
-/*
+  int state_index = 0;////////////debug only
   for (vector<string>::iterator it = states.begin(); it != states.end(); ++it) {
     vector<Vehicle> trajectory = generate_trajectory(*it, predictions, predicted_self);
     if (trajectory.size() != 0) {
-      cost = calculate_cost(*this, predictions, trajectory);
+      //cost = calculate_cost(*this, predictions, trajectory);
+      std::cout << "successor state = " << states[state_index] << std::endl;
+      state_index += 1; /////////////debug only
+      cost = calculate_cost(predicted_self, predictions, trajectory);
+      
       costs.push_back(cost);
       final_trajectories.push_back(trajectory);
     }
@@ -80,9 +84,27 @@ vector<Vehicle> Vehicle::choose_next_state(vector<Vehicle> &predictions, Vehicle
   
 
   return final_trajectories[best_idx];
-*/  
-  vector<Vehicle> trajectory = generate_trajectory("KL", predictions, predicted_self);///////temporary step in debug
+/*  
+  vector<Vehicle> trajectory;
+  if (predicted_self.v < 16 && predicted_self.lane<2 && predicted_self.a<1) {
+    std::cout << "LCR" << std::endl;
+    trajectory = generate_trajectory("LCR", predictions, predicted_self);
+    if (trajectory.size() != 0) {
+      return trajectory;
+    }
+  }
+  else if (predicted_self.v < 16 && predicted_self.lane>0 && predicted_self.a<1) {
+    std::cout << "LCL" << std::endl;
+    trajectory = generate_trajectory("LCL", predictions, predicted_self);
+    if (trajectory.size() != 0) {
+      return trajectory;
+    }
+  }
+  if (trajectory.size() == 0) {
+    trajectory = generate_trajectory("KL", predictions, predicted_self);///////temporary step in debug
+  }
   return trajectory;
+*/
 }
 
 vector<string> Vehicle::successor_states() {
@@ -94,14 +116,20 @@ vector<string> Vehicle::successor_states() {
   states.push_back("KL");
   string state = this->state;
   if(state.compare("KL") == 0) {
-    states.push_back("PLCL");
-    states.push_back("PLCR");
-  } else if (state.compare("PLCL") == 0) {
+    if (lane != 0) {
+      states.push_back("PLCL");
+    }
+    if (lane != lanes_available - 1) {
+      states.push_back("PLCR");
+    }
+  } 
+  else if (state.compare("PLCL") == 0) {
     if (lane != 0) {
       states.push_back("PLCL");
       states.push_back("LCL");
     }
-  } else if (state.compare("PLCR") == 0) {
+  } 
+  else if (state.compare("PLCR") == 0) {
     if (lane != lanes_available - 1) {
       states.push_back("PLCR");
       states.push_back("LCR");
@@ -118,18 +146,36 @@ vector<Vehicle> Vehicle::generate_trajectory(string state, vector<Vehicle> &pred
   vector<Vehicle> trajectory;
 //  if (state.compare("CS") == 0) {
 //    trajectory = constant_speed_trajectory();
-//  } else if (state.compare("KL") == 0) {
+//  } 
+    if (state.compare("KL") == 0) {
     trajectory = keep_lane_trajectory(predictions, predicted_self);
-//  } else if (state.compare("LCL") == 0 || state.compare("LCR") == 0) {
-//    trajectory = lane_change_trajectory(state, predictions);
-//  } else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0) {
-//    trajectory = prep_lane_change_trajectory(state, predictions);
-//  }
+  } else if (state.compare("LCL") == 0 || state.compare("LCR") == 0) {
+    trajectory = lane_change_trajectory(state, predictions, predicted_self);
+  } else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0) {
+    trajectory = prep_lane_change_trajectory(state, predictions, predicted_self);
+  }
+
+/*
+  if (state.compare("KL") == 0) {
+    trajectory = keep_lane_trajectory(predictions, predicted_self);
+  }
+  else if (state.compare("LCL") == 0 || state.compare("LCR") == 0) {
+    trajectory = lane_change_trajectory(state, predictions, predicted_self);
+  }
+  else if (state.compare("PLCL") == 0 || state.compare("PLCR") == 0) {
+    trajectory = prep_lane_change_trajectory(state, predictions, predicted_self);
+  }
+  
+  if (trajectory.size() == 0) {
+    trajectory = keep_lane_trajectory(predictions, predicted_self);
+  }
+*/
 
   return trajectory;
 }
 
 vector<double> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane, Vehicle &predicted_self) {
+  //std::cout << "start get_kinematics" << std::endl;
   // Gets next timestep kinematics (position, velocity, acceleration) 
   //   for a given lane. Tries to choose the maximum velocity and acceleration, 
   //   given other vehicle positions and accel/velocity constraints.
@@ -139,15 +185,17 @@ vector<double> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane, V
   double new_velocity;
   double new_accel;
   double gap_to_close; //approximate gap between self-driving car position and the target position
-  int catch_up_time = 10; //number of seconds during which I would like to close the gap
+  int catch_up_time = 1; //number of seconds during which I would like to close the gap
   double accel_to_catch_up; //acceleration needed to close the gap in the desired time
   Vehicle vehicle_ahead;
   Vehicle vehicle_behind;
 
   if (get_vehicle_ahead(predictions, lane, vehicle_ahead, predicted_self)) { 
+    std::cout << "car ahead" << std::endl;
     if (get_vehicle_behind(predictions, lane, vehicle_behind, predicted_self)) {
       // must travel at the speed of traffic, regardless of preferred buffer
       ///new_velocity = vehicle_ahead.v;
+      std::cout << " and behind" << std::endl;
       double relative_midpoint = (vehicle_ahead.s - vehicle_behind.s - 2*this->preferred_buffer) / 2;
       if(relative_midpoint<=0) {
         gap_to_close = ((vehicle_ahead.s - vehicle_behind.s) / 2 + vehicle_behind.s) - predicted_self.s;
@@ -160,43 +208,61 @@ vector<double> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane, V
       /// Since gap_to_close is just the distance traveled by the car in addition to its current trajectory, it's not the absolute distance 
       /// so v=0 in the equation, which makes it easier. The acceleration will later just be added to the car's current velocity. 
       /// the integrated equation simplifies to:
-      accel_to_catch_up = 3*gap_to_close / pow(catch_up_time, 3) + predicted_self.a;     
+      /////accel_to_catch_up = 3*gap_to_close / pow(catch_up_time, 3) + predicted_self.a;   
+
+      ///solve for acceleration in equation of form ax^2+bx+c=d, 
+      ///where a=new_accel, x=catch_up_time, b=(vehicle speed - target speed), c=0, and d=gap_to_close
+      accel_to_catch_up = (gap_to_close - ((this->v) - (vehicle_ahead.v - vehicle_behind.v)/2))/(catch_up_time*catch_up_time);
       ///new_velocity = std::min(std::min(max_velocity_in_front, max_velocity_accel_limit), this->target_speed);
       new_accel = std::min(accel_to_catch_up, this->max_acceleration);
-        
-      
+      new_accel = std::max(accel_to_catch_up, (-1 * this->max_acceleration));  
+      //std::cout << "gap_to_close = " << gap_to_close << "   accel_to_catch_up = " << new_accel << std::endl;
     } 
     else {
       ///double max_velocity_in_front = (vehicle_ahead.s - this->s - this->preferred_buffer) + vehicle_ahead.v - 0.5 * (this->a);
       gap_to_close = (vehicle_ahead.s - predicted_self.s - this->preferred_buffer);
-      assert(gap_to_close > 0);
+
+///////      assert(gap_to_close > 0);
+
       /// find the acceleration needed to close the gap in the desired amount of time.
       /// the gap_to_close is equal to the integral from 0 to catch_up_time of d+vt+at^2.  
       /// Since gap_to_close is just the distance traveled by the car in addition to its current trajectory, it's not the absolute distance 
       /// so v=0 in the equation, which makes it easier. The acceleration will later just be added to the car's current velocity. 
       /// the integrated equation simplifies to:
-      accel_to_catch_up = 3*gap_to_close / pow(catch_up_time, 3);     
+      /////accel_to_catch_up = 3*gap_to_close / pow(catch_up_time, 3);   
+      ///solve for acceleration in equation of form ax^2+bx+c=d, 
+      ///where a=new_accel, x=catch_up_time, b=(vehicle speed - vehicle ahead speed), c=0, and d=gap_to_close
+      accel_to_catch_up = (gap_to_close - ((this->v) - vehicle_ahead.v))/(catch_up_time*catch_up_time);  
       ///new_velocity = std::min(std::min(max_velocity_in_front, max_velocity_accel_limit), this->target_speed);
       new_accel = std::min(accel_to_catch_up, this->max_acceleration);
-      
+      new_accel = std::max(accel_to_catch_up, (-1 * this->max_acceleration));
+      //std::cout << "gap_to_close = " << gap_to_close << "   accel_to_catch_up = " << new_accel << std::endl;
     }
+    new_velocity = vehicle_ahead.v;
+    std::cout << "vehicle_ahead.v = " << vehicle_ahead.v << std::endl;
   } 
   else {
     ///new_velocity = std::min(max_velocity_accel_limit, this->target_speed);
     new_accel = this->max_acceleration;
+    new_velocity = this->target_speed;
+    std::cout << "no car ahead" << std::endl;
   }
-  if(predicted_self.v >= this->target_speed) {
+  if(predicted_self.v > this->target_speed) {
 	double accel_to_slow_down = this->target_speed - predicted_self.v;
-	new_accel = accel_to_slow_down;
+	new_accel = std::min(new_accel, accel_to_slow_down);
+	//std::cout << "predicted_self.v = " << predicted_self.v << std::endl;
   }  
   ///new_accel = new_velocity - this->v; // Equation: (v_1 - v_0)/t = acceleration
   ///new_position = this->s + new_velocity + new_accel / 2.0;
-  new_velocity = this->v;
-  new_position = this->s;
-    
+  //new_velocity = this->v;
+  new_position = predicted_self.s; //new_position = this->s;
+  
+  //std::cout << "end get_kinematics: new_accel is " << new_accel << " and gap_to_close is " << gap_to_close << std::endl;  
+  //std::cout << "this->max_acceleration = " << this->max_acceleration << "  -1 * this->max_acceleration = " << (-1 * this->max_acceleration) << std::endl;
   return{new_position, new_velocity, new_accel};
 }
 
+/*
 vector<Vehicle> Vehicle::constant_speed_trajectory() {
   // Generate a constant speed trajectory.
   float next_pos = position_at(1);
@@ -204,20 +270,24 @@ vector<Vehicle> Vehicle::constant_speed_trajectory() {
                                 Vehicle(this->lane, this->d, next_pos,this->v,0, this->x, this->y, this->vx, this->vy, this->yaw, this->state)};
   return trajectory;
 }
+*/
 
 vector<Vehicle> Vehicle::keep_lane_trajectory(vector<Vehicle> &predictions, Vehicle &predicted_self) {
   // Generate a keep lane trajectory.
-  vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, this->state)};
-  vector<double> kinematics = get_kinematics(predictions, this->lane, predicted_self);
+  //vector<Vehicle> trajectory = {Vehicle(this->lane, this->d, this->s, this->v, this->a, this->x, this->y, this->vx, this->vy, this->yaw, this->state)};
+//  vector<Vehicle> trajectory = {predicted_self};
+  vector<double> kinematics = get_kinematics(predictions, predicted_self.lane, predicted_self);
   //double new_s = kinematics[0];
-  //double new_v = kinematics[1];
+  double new_v = kinematics[1];
   double new_a = kinematics[2];
   //double new_x;///
   //double new_y;///
   //double new_vx;///
   //double new_vy;///
   //double new_yaw;///
-  trajectory.push_back(Vehicle(this->lane, this->d, this->s, this->v, new_a, this->x, this->y, this->vx, this->vy, this->yaw, "KL"));
+  //trajectory.push_back(Vehicle(this->lane, this->d, this->s, this->v, new_a, this->x, this->y, this->vx, this->vy, this->yaw, "KL"));
+  vector<Vehicle> trajectory = {Vehicle(predicted_self.lane, predicted_self.d, predicted_self.s, new_v, new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, "KL")}; // intended lane
+  trajectory.push_back(Vehicle(predicted_self.lane, predicted_self.d, predicted_self.s, new_v, new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, "KL")); // final lane
   
   return trajectory;
 }
@@ -227,6 +297,7 @@ vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, vector<Vehicl
   //float new_s;
   //float new_v;
   //float new_a;
+/*
   double new_s;
   double new_v;
   double new_a;
@@ -266,13 +337,33 @@ vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, vector<Vehicl
   trajectory.push_back(Vehicle(this->lane, this->d, new_s, new_v, new_a, new_x, new_y, new_vx, new_vy, new_yaw, state));
   
   return trajectory;
+*/  
+  int intended_lane = this->lane + lane_direction[state];
+  std::cout << "prep_lane_change_trajectory: this lane is " << (this->lane) << " and intended_lane is " << intended_lane << std::endl;
+//  vector<Vehicle> trajectory;
+//  trajectory.push_back(predicted_self);
+  vector<double> intended_lane_kinematics = get_kinematics(predictions, intended_lane, predicted_self);
+  double intended_lane_new_v = intended_lane_kinematics[1];
+  double intended_lane_new_a = intended_lane_kinematics[2]; 
+  double intended_lane_new_d = 2 + intended_lane * 4;
+  vector<double> final_lane_kinematics = get_kinematics(predictions, this->lane, predicted_self);
+  double final_lane_new_v = final_lane_kinematics[1];
+  double final_lane_new_a = final_lane_kinematics[2]; 
+  std::cout << "intended_lane_v = " << intended_lane_new_v << "    final_lane_v = " << final_lane_new_v << std::endl;
+//  double new_a = std::min(this_lane_new_a, new_lane_new_a);
+  vector<Vehicle> trajectory = {Vehicle(intended_lane, intended_lane_new_d, predicted_self.s, intended_lane_new_v, intended_lane_new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, state)}; // intended lane
+  trajectory.push_back(Vehicle(this->lane, predicted_self.d, predicted_self.s, final_lane_new_v, final_lane_new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, state)); // final lane
+  //return keep_lane_trajectory(predictions, predicted_self);
+  return trajectory;
 }
 
-vector<Vehicle> Vehicle::lane_change_trajectory(string state, vector<Vehicle> &predictions) {
+vector<Vehicle> Vehicle::lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self) {
   // Generate a lane change trajectory.
+  std::cout << "start lane_change_trajectory" << std::endl;
   int new_lane = this->lane + lane_direction[state];
+  std::cout << "new_lane = " << new_lane << "  this->lane = " << this->lane << "  lane_direction[state] = " << lane_direction[state] << std::endl;
   vector<Vehicle> trajectory;
-  Vehicle next_lane_vehicle;
+  //Vehicle next_lane_vehicle;
   // Check if a lane change is possible (check if another vehicle occupies 
   //   that spot).
 /*  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); 
@@ -287,9 +378,29 @@ vector<Vehicle> Vehicle::lane_change_trajectory(string state, vector<Vehicle> &p
   vector<float> kinematics = get_kinematics(predictions, new_lane, predicted_self);
   trajectory.push_back(Vehicle(new_lane, this->d, kinematics[0], kinematics[1], 
                                kinematics[2], this->x, this->y, this->vx, this->vy, this->yaw, state));
-*/  return trajectory;
+*/ 
+/* 
+  double ahead_limit = predicted_self.s + predicted_self.ahead_horizon/2;/////////////////////////////
+  double behind_limit = predicted_self.s - predicted_self.behind_horizon/2;///////////////////////////
+  for (int i=0; i<predictions.size(); ++i) {
+    if (new_lane == predictions[i].lane && (predictions[i].s <= ahead_limit && predictions[i].s >= behind_limit)) {
+      std::cout << "lane change not possible - blocked" << std::endl;
+      return trajectory; // if lane is blocked and lane change is not possible, return empty trajectory
+    }
+  }
+*/
+//  trajectory.push_back(predicted_self);
+  vector<double> kinematics = get_kinematics(predictions, new_lane, predicted_self);
+  double new_v = kinematics[1];
+//  trajectory[0].v= kinematics[1];  //this is for use later in the cost function to differentiate between prepare lane change and lane change
+  double new_a = kinematics[2]; 
+  double new_d = 2 + new_lane * 4;
+  trajectory.push_back(Vehicle(new_lane, new_d, predicted_self.s, new_v, new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, state));  // intended lane
+  trajectory.push_back(Vehicle(new_lane, new_d, predicted_self.s, new_v, new_a, predicted_self.x, predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, state)); // final lane
+  std::cout << "end lane_change_trajectory" << "  new_lane = " << new_lane << std::endl;
+  return trajectory;
 }
-
+/*
 void Vehicle::increment(int dt = 1) {
   this->s = position_at(dt);
 }
@@ -297,6 +408,7 @@ void Vehicle::increment(int dt = 1) {
 float Vehicle::position_at(int t) {
   return this->s + this->v*t + this->a*t*t/2.0;
 }
+*/
 
 bool Vehicle::get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle, Vehicle &predicted_self) {
   // Returns a true if a vehicle is found behind the current vehicle, false 
@@ -307,7 +419,7 @@ bool Vehicle::get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle
 //  for (map<int, vector<Vehicle>>::iterator it = predictions.begin(); it != predictions.end(); ++it) {
   for (int i=0; i<predictions.size(); ++i) {
     temp_vehicle = predictions[i]; //it->second[0];
-    if (temp_vehicle.lane == predicted_self.lane && temp_vehicle.s < predicted_self.s && temp_vehicle.s > max_s) {
+    if (temp_vehicle.lane == lane && temp_vehicle.s < predicted_self.s && temp_vehicle.s > max_s) {
       max_s = temp_vehicle.s;
       rVehicle = temp_vehicle;
       found_vehicle = true;
@@ -326,7 +438,7 @@ bool Vehicle::get_vehicle_ahead(vector<Vehicle> &predictions, int lane, Vehicle 
   //for (vector<Vehicle>::iterator it = predictions.begin(); it != predictions.end(); ++it) {
   for (int i=0; i<predictions.size(); ++i) {
     temp_vehicle = predictions[i];//it->first[0];
-    if (temp_vehicle.lane == predicted_self.lane && temp_vehicle.s > predicted_self.s  && temp_vehicle.s < min_s) {
+    if (temp_vehicle.lane == lane && temp_vehicle.s >= predicted_self.s  && temp_vehicle.s < min_s) {
       min_s = temp_vehicle.s;
       rVehicle = temp_vehicle;
       found_vehicle = true;
@@ -344,6 +456,7 @@ Vehicle predict_self(Vehicle ego, double timesteps) {
   Vehicle predicted_self = ego;
   double step_time = 0.02 * timesteps;
   predicted_self.s += predicted_self.v*step_time + predicted_self.a*step_time*step_time;
+  predicted_self.v += predicted_self.a*step_time;
   return predicted_self;
 }
 
@@ -356,11 +469,11 @@ vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, do
   for(int i=0; i<other_cars.size(); ++i) {
     Vehicle predict_car = other_cars[i];
     //std::cout << "ego.s = " << ego.s << "  predict_car.s = " << predict_car.s << std::endl;
-    if(((ego.s>predict_car.s)&&((ego.s-predict_car.s)<(ego.behind_horizon))) || ((predict_car.s>=ego.s)&&((predict_car.s-ego.s)<(ego.ahead_horizon)))) {
+//    if(((ego.s>predict_car.s)&&((ego.s-predict_car.s)<(ego.behind_horizon))) || ((predict_car.s>=ego.s)&&((predict_car.s-ego.s)<(ego.ahead_horizon)))) {
       double step_time = 0.02 * timesteps;
       predict_car.s += predict_car.v*step_time + predict_car.a*step_time*step_time; /// a is zero
       predictions.push_back(predict_car);
-    }
+//    }
   }
   //std::cout << "predictions.size() = " << predictions.size() << std::endl;
   return predictions;

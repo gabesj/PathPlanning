@@ -28,11 +28,11 @@ class Vehicle {
 
   vector<double> get_kinematics(vector<Vehicle> &predictions, int lane, Vehicle &predicted_self);
 
-  vector<Vehicle> constant_speed_trajectory();
+//  vector<Vehicle> constant_speed_trajectory();
 
   vector<Vehicle> keep_lane_trajectory(vector<Vehicle> &predictions, Vehicle &predicted_self);
 
-  vector<Vehicle> lane_change_trajectory(string state, vector<Vehicle> &predictions);
+  vector<Vehicle> lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   vector<Vehicle> prep_lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
 
@@ -58,12 +58,12 @@ class Vehicle {
     int  time; // time collision happens
   };
 
-  map<string, int> lane_direction = {{"PLCL", 1}, {"LCL", 1}, 
-                                     {"LCR", -1}, {"PLCR", -1}};
+  map<string, int> lane_direction = {{"PLCL", -1}, {"LCL", -1}, 
+                                     {"LCR", 1}, {"PLCR", 1}};
 
   int L = 1;
 
-  int preferred_buffer = 15; // impacts "keep lane" behavior.
+  int preferred_buffer = 25; // impacts "keep lane" behavior.
 
   int lane, goal_lane, goal_s, lanes_available;
 

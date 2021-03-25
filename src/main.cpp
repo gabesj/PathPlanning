@@ -74,19 +74,21 @@ int main() {
   double target_speed = (speed_limit - 1.0) / 2.224;/////Dividing by 2.224 converts mph to m/s
   double max_accel = 10-1; // m/s^2         0.2;///0.44;///
   double ahead_horizon = 50.0;
-  double behind_horizon = 20.0;
+  double behind_horizon = 50.0;
   double ref_accel = 0.0;
   vector<double> config_data = {target_speed, max_accel, ahead_horizon, behind_horizon};///
   Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); ///
   ego.configure(config_data);///
   ego.state = "KL";///
+  bool lane_changing = false;
+  int next_lane = lane;
 
   ///other variables
   int first_sweep = true;
-  int send_path_size = 50;
+  int send_path_size = 40;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&ego,&first_sweep,&send_path_size,&ref_accel]
+               &map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&ego,&first_sweep,&send_path_size,&ref_accel,&lane_changing,&next_lane]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -103,7 +105,7 @@ int main() {
         
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          
+          std::cout << "********************************" << ego.state << "*******************" << std::endl;
           // Main car's localization Data
           //double car_x = j[1]["x"];
           //double car_y = j[1]["y"];
@@ -120,6 +122,7 @@ int main() {
 	  ego.v = ego.v/2.224;/////Dividing by 2.224 converts mph to m/s
 	  //std::cout << "ego.v = " << ego.v << std::endl;
 	  ego.a = ref_accel;
+	  ego.lane = round((ego.d-2)/4);
 	  
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
@@ -156,9 +159,9 @@ int main() {
 	    /// but it also does not reflect the lateral and straight differentiation in an actual lane change.
             Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y, other_vx, other_vy, other_yaw);
             other_cars.push_back(other_car);
-	    std::cout << "other car " << i << " speed is " << other_speed << std::endl;
+	    //std::cout << "other car " << i << " speed is " << other_speed << std::endl;
 	  }
-	  std::cout << "other_cars.size() = " << other_cars.size() << std::endl;
+	  //std::cout << "other_cars.size() = " << other_cars.size() << std::endl;
           /**
            * TODO: define a path made up of (x,y) points that the car will visit
            *   sequentially every .02 seconds
@@ -173,7 +176,7 @@ int main() {
 	  else {
 	    timestep_running_avg = 0.1*(send_path_size-prev_size) + 0.9*timestep_running_avg;
 	  }
-	  std::cout << "last size = " << send_path_size-prev_size << ", timestep_running_avg = " << timestep_running_avg << std::endl;
+	  //std::cout << "last size = " << send_path_size-prev_size << ", timestep_running_avg = " << timestep_running_avg << std::endl;
 /*
 	  if(prev_size>0) {
 	    //car_s = end_path_s;
@@ -186,23 +189,46 @@ int main() {
 	  ////previous_path are still future points.
 
 	  ///get predictions for the future locations of other vehicles within a certain distance ahead and behind  
-	  std::cout << "ego.s = " << ego.s << std::endl;
+	  
 	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size); //timestep_running_avg);	  
 	  Vehicle predicted_self = predict_self(ego, prev_size); // timestep_running_avg);
 	  ///choose the best state for the next time step
 	  /// the "Vehicles" in trajectory are used just to hold lane and speed info for the trajectory
-	  vector<Vehicle> trajectory = ego.choose_next_state(predictions, predicted_self);
+	  vector<Vehicle> trajectory;
+	  if (lane_changing != true) {
+            trajectory = ego.choose_next_state(predictions, predicted_self);
+          }
+	  else {
+            Vehicle desired_predicted_self = predicted_self;
+            desired_predicted_self.lane = next_lane;
+            trajectory = ego.generate_trajectory("KL", predictions, desired_predicted_self);
+            
+          }
 
-	  
 	  if(first_sweep) {
 	    ref_accel = ego.max_acceleration;
 	  }
 	  else {
-	    ref_accel = trajectory[1].a;//////////////////////
+	    ref_accel = std::min(trajectory[0].a, trajectory[1].a);/////////////////////
 	  }
+          std::cout << "ego.lane = " << ego.lane << "  trajectory[1].lane = " << trajectory[1].lane << "  lane_changing = " << lane_changing << "  next_lane = " << next_lane << std::endl;
+          std::cout << "ego.d = " << ego.d << std::endl;
+          std::cout << "ego.s = " << ego.s << std::endl;
 	  std::cout << "ego.v = " << ego.v << std::endl;
           std::cout << "ego.a = " << ego.a << std::endl;
 	  std::cout << "ref_accel = " << ref_accel << std::endl;
+          if (ego.lane != trajectory[1].lane) {
+            lane_changing = true;
+	    next_lane = trajectory[1].lane;
+          }
+	  else if (ego.lane == next_lane) {
+	    lane_changing = false;
+	  }
+   	  lane = next_lane; 
+          ego.state = trajectory[1].state; 
+	  
+ 	    
+
 /*
 	  bool too_close = false;
 	  ////////double accel_factor = 1;//////////////////////////////////
@@ -385,7 +411,7 @@ int main() {
 	    double x2 = previous_path_x[prev_size-12];
 	    double y2 = previous_path_y[prev_size-12];
 	    fut_vel = distance(x1,y1,x2,y2)/(11*0.02);
-	    std::cout << "(x1,y1) = (" << x1 << "," << y1 << ") and (x2,y2) = (" << x2 << "," << y2 << ")" << std::endl;
+	    //std::cout << "(x1,y1) = (" << x1 << "," << y1 << ") and (x2,y2) = (" << x2 << "," << y2 << ")" << std::endl;
 	  }
 	  std::cout << "fut_vel = " << fut_vel << std::endl;
 	  double pos_add_on = fut_vel * 0.02; ///ego.v * 0.02; ///position increase at current velocity per 0.02 timestep 
@@ -418,7 +444,7 @@ int main() {
 	    //if ((x_point*incr_vel*i/2*0.02+ego.v)>=ego.target_speed) {
 	    //  x_point = x_point - incr_pos;
 	    //}
-	    std::cout << "x_point = " << x_point << " x_add_on = " << x_add_on << " pos_add_on = " << pos_add_on << " incr_pos = " << incr_pos << std::endl;
+	    //std::cout << "x_point = " << x_point << " x_add_on = " << x_add_on << " pos_add_on = " << pos_add_on << " incr_pos = " << incr_pos << std::endl;
 	    
 	    double y_point = s(x_point);
 

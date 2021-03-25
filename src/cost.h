@@ -7,8 +7,14 @@ using std::map;
 using std::string;
 using std::vector;
 
-float calculate_cost(const Vehicle &vehicle, 
-                     const map<int, vector<Vehicle>> &predictions, 
+float collision_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions);
+
+float speed_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions);
+
+float lane_change_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions);
+
+float calculate_cost(const Vehicle &predicted_self, 
+                     const vector<Vehicle> &predictions, 
                      const vector<Vehicle> &trajectory);
 
 float goal_distance_cost(const Vehicle &vehicle,  
