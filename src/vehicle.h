@@ -28,17 +28,11 @@ class Vehicle {
 
   vector<double> get_kinematics(vector<Vehicle> &predictions, int lane, Vehicle &predicted_self);
 
-//  vector<Vehicle> constant_speed_trajectory();
-
   vector<Vehicle> keep_lane_trajectory(vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   vector<Vehicle> lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
 
   vector<Vehicle> prep_lane_change_trajectory(string state, vector<Vehicle> &predictions, Vehicle &predicted_self);
-
-  void increment(int dt);
-
-  float position_at(int t);
 
   bool get_vehicle_behind(vector<Vehicle> &predictions, int lane, Vehicle &rVehicle, Vehicle &predicted_self);
 
@@ -50,7 +44,7 @@ class Vehicle {
 
   void realize_next_state(vector<Vehicle> &trajectory);
 
-  void configure(vector<double> &road_data); ///(vector<int> &road_data);
+  void configure(vector<double> &road_data); 
 
   // public Vehicle variables
   struct collider{
@@ -80,7 +74,7 @@ class Vehicle {
 // lane, d, s, v, a, x, y, vx, vy, yaw, state
 
 ///The Vehicle for the self-driving car has:
-// lane, d, s, v,  , x, y,   ,   , yaw, state
+// lane, d, s, v, a, x, y,   ,   , yaw, state
 
 ///The Vehicles for the other cars have:
 // lane, d, s, v,  , x, y, vx, vy,    ,    
