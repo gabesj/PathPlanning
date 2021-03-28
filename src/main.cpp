@@ -1,3 +1,13 @@
+// SUMMARY:
+// The goal of this project is to drive a vehicle which must obey the speed limit, not collide with other vehicles, stay in its lane unless changing lanes,
+// avoid uncomfortable acceleration and jerk, and change lanes to get around slow-moving traffic.
+// The decision of changing lanes is evaluated as a finite state machine with cost functions.
+// This program creates a continuously updated list of consecutive points that the car should travel through in 0.02 second increments.
+// That list is sent to the simulator and determines the car's behavior such as speed, acceleration, and position.
+// The row of green dots in front of the car in the simulator show the listed points of the future trajectory.
+// The simulator provides the vehicle's position/speed/angle as well as those of the other vehicles on the right side of the road.
+
+
 #include <uWS/uWS.h>
 #include <fstream>
 #include <iostream>
@@ -8,9 +18,9 @@
 #include "helpers.h"
 #include "json.hpp"
 #include "spline.h"
-#include "vehicle.h"////////
-#include "vehicle.cpp"////////
-#include "cost.cpp"////////
+#include "vehicle.h"
+#include "vehicle.cpp"
+#include "cost.cpp"
 
 // for convenience
 using nlohmann::json;
@@ -54,10 +64,10 @@ int main() {
     map_waypoints_dy.push_back(d_y);
   }
 
-  ///start in lane 1.  Lane 0 is left lane, lane 2 is right lane.
+  // Start in lane 1.  Lane 0 is left lane, lane 2 is right lane.
   int lane = 1;
 
-  ///create the self-driving car
+  // Create the self-driving car
   double init_s = 0.0;
   double init_d = 0.0;
   double init_speed = 0.0;
@@ -68,21 +78,21 @@ int main() {
   double init_vy = 0.0;
   double init_yaw = 0.0;
   double speed_limit = 50.0;///mph
-  double target_speed = (speed_limit - 1.0) / 2.224;/////Dividing by 2.224 converts mph to m/s
+  double target_speed = (speed_limit - 1.0) / 2.224; // Dividing by 2.224 converts mph to m/s
   double max_accel = 10-1; // m/s^2         
   double ahead_horizon = 50.0;
-  double behind_horizon = 50.0;
+  double behind_horizon = 70.0;
   double ref_accel = 0.0;
   vector<double> config_data = {target_speed, max_accel, ahead_horizon, behind_horizon};
   Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); 
   ego.configure(config_data);
   ego.state = "KL";
-  bool lane_changing = false;
-  int next_lane = lane;
-
+  
   ///other variables
   int first_sweep = true;
   int send_path_size = 40;
+  bool lane_changing = false;
+  int next_lane = lane;
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
                &map_waypoints_dx,&map_waypoints_dy,&lane,&ego,&first_sweep,&send_path_size,&ref_accel,&lane_changing,&next_lane]
@@ -102,28 +112,42 @@ int main() {
         
         if (event == "telemetry") {
           // j[1] is the data JSON object
-          // Main car's localization Data
+          // Self-driving car's localization Data
 	  ego.x = j[1]["x"];
           ego.y = j[1]["y"];
           ego.s = j[1]["s"];
           ego.d = j[1]["d"];
           ego.yaw = j[1]["yaw"];
           ego.v = j[1]["speed"];
-	  ego.v = ego.v/2.224;/////Dividing by 2.224 converts mph to m/s
+	  ego.v = ego.v/2.224; // Dividing by 2.224 converts mph to m/s
 	  ego.a = ref_accel;
 	  ego.lane = round((ego.d-2)/4);
 	  
-          // Previous path data given to the Planner
+          // The program sends a list of future points to traverse, and each cycle the simulator returns a subset of these points
+  	  // which are the future points that the car has not yet traversed.
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
           // Previous path's end s and d values 
           double end_path_s = j[1]["end_path_s"];
           double end_path_d = j[1]["end_path_d"];
 
-          // Sensor Fusion Data, a list of all other cars on the same side 
-          //   of the road.
+          // Size of the last calculated path returned from simulator.  
+	  // These are the planned points of the trajectory that the car has not yet passed through.
+	  int prev_size = previous_path_x.size();
+	 
+	  double fut_vel = ego.v; // Estimated future velocity at the end of the planned trajectory.
+	  // Estimate the vehicle's velocity at the end of its previously planned trajectory.
+	  if(prev_size > 12) {
+	    double x1 = previous_path_x[prev_size-1];
+	    double y1 = previous_path_y[prev_size-1];
+	    double x2 = previous_path_x[prev_size-12];
+	    double y2 = previous_path_y[prev_size-12];
+	    fut_vel = distance(x1,y1,x2,y2)/(11*0.02);
+	  }
+
+          // Sensor Fusion Data, a list of all other cars on the same side of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
-	  ///create a vector of Vehicles representing the sensor fusion info
+	  // Create a vector of Vehicles representing the sensor fusion info
 	  vector<Vehicle> other_cars;
           for(int i=0; i<sensor_fusion.size(); ++i) {
 	    double other_x = sensor_fusion[i][1];
@@ -144,53 +168,39 @@ int main() {
               other_lane = 2;
             }
             assert(other_lane != -1);
-	    ///assumes that velocity is in the direction of the lane.  This prevents misattributing a curve in the road to a lane change,
-	    /// but it also does not reflect the lateral and straight differentiation in an actual lane change.
-            Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, other_a, other_x, other_y, other_vx, other_vy, other_yaw);
+            Vehicle other_car = Vehicle(other_lane, other_d, other_s, other_speed, 
+					other_a, other_x, other_y, other_vx, other_vy, other_yaw);
             other_cars.push_back(other_car);
 	  }
-	  
-          /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
-           */
-	  /// size of the last calculated path
-	  int prev_size = previous_path_x.size();
-	  /// approximate average number of 0.02 second increments in previous time steps
-	  double timestep_running_avg;
-	  if(first_sweep){
-	    timestep_running_avg = 10;
-	  }
-	  else {
-	    timestep_running_avg = 0.1*(send_path_size-prev_size) + 0.9*timestep_running_avg;
-	  }
-	  
-	  ////predict the future locations of the other vehicles.  prev_size is the number of left over 0.02 second increments 
-	  ////from the previous planned path that are returned from the simulator.  the first elements in previous_path_x and 
-	  ////previous_path_y are almost exactly where the car's localization data says it currently is, and the rest of the 
-	  ////previous_path are still future points.
 
-	  ///get predictions for the future locations of other vehicles within a certain distance ahead and behind  
-	  
+	  // Get predictions for the future locations of other vehicles and the ego (self-driving) vehicle itself.
 	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size); 	  
-	  Vehicle predicted_self = predict_self(ego, prev_size); 
-	  ///choose the best state for the next time step
-	  /// the "Vehicles" in trajectory are used just to hold lane and speed info for the trajectory
+	  Vehicle predicted_self = predict_self(ego, prev_size, fut_vel); 
+	  
+	  // Generate a plan which includes vehicle acceleration and lane designation.
+ 	  // The plan is returned in a vector of two Vehicle objects.  
+	  // The first object provides information for the intended lane of the next finite state, 
+	  // the second object is for the final lane of the next finite state.
 	  vector<Vehicle> trajectory;
 	  if (lane_changing != true) {
             trajectory = ego.choose_next_state(predictions, predicted_self);
           }
-	  else {
+	  else { // If a lane change has been initiated, keep executing planned lane change and adapt acceleration to new lane.
             Vehicle desired_predicted_self = predicted_self;
             desired_predicted_self.lane = next_lane;
             trajectory = ego.generate_trajectory("KL", predictions, desired_predicted_self);
           }
+	  
+	  // Accelerate at the fastest safe and comfortable rate.
 	  if(first_sweep) {
-	    ref_accel = ego.max_acceleration;
+	    ref_accel = ego.max_acceleration; // Starting from speed of zero.
 	  }
 	  else {
-	    ref_accel = std::min(trajectory[0].a, trajectory[1].a);/////////////////////
+	    // Accelerate at a rate that will prevent forward collision in either intended or final lane.
+	    ref_accel = std::min(trajectory[0].a, trajectory[1].a); 
 	  }
+
+	  // Determine if a lane change has been initiated or completed
           if (ego.lane != trajectory[1].lane) {
             lane_changing = true;
 	    next_lane = trajectory[1].lane;
@@ -201,18 +211,18 @@ int main() {
    	  lane = next_lane; 
           ego.state = trajectory[1].state; 
 	  
-	  /// create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
-  	  /// later we will interpolate these waypoints with a spline and fill it in with more points that control speed.
+	  // Create a list of widely spaced (x,y) future waypoints, evenly spaced at 30m.
+  	  // Later these waypoints will be interpolated with a spline function and used to determine specific points in the trajectory.
 	  vector<double> ptsx;
 	  vector<double> ptsy;	 
 	  
-	  /// reference x, y, yaw states
-	  /// either we will reference the starting point as where the car is or at the previous paths end point
+	  // Reference x, y, yaw states of the vehicle's current location.
 	  double ref_x = ego.x;
 	  double ref_y = ego.y;
 	  double ref_yaw = deg2rad(ego.yaw); 
 
-	  ///if previous size is almost empty, use the car as starting reference and extrapolate the previous point
+	  // If size of the remaining untraveled trajectory is almost empty (start of simulator), 
+	  // use the car as starting reference and extrapolate the previous point
 	  if(prev_size < 2){
 	    double prev_car_x = ego.x - cos(ref_yaw);
 	    double prev_car_y = ego.y - sin(ref_yaw);
@@ -224,7 +234,7 @@ int main() {
 	    ptsy.push_back(ego.y);
 	  }
 	  
-	  /// otherwise use the previous path's end point as a starting reference
+	  // otherwise use the previous path's end point as a starting reference
 	  else {
 	    ref_x = previous_path_x[prev_size-1];
 	    ref_y = previous_path_y[prev_size-1];
@@ -233,14 +243,15 @@ int main() {
 	    double ref_y_prev = previous_path_y[prev_size-2];
 	    ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
 
-	    /// use two points that make the path tangent to the previous path's end point
+	    // use two points that make the path tangent to the previous path's end point
 	    ptsx.push_back(ref_x_prev);
 	    ptsx.push_back(ref_x);
 
 	    ptsy.push_back(ref_y_prev);
 	    ptsy.push_back(ref_y);
 	  }
-	  /// In Frenet coordinates find three future waypoints ahead of the starting reference at 30,60, and 90 meters ahead	  
+	  // In Frenet coordinates find three future waypoints ahead of the starting reference 
+	  // at 30,60, and 90 meters ahead in the desired lane.  
 	  vector<double> next_wp0;
 	  vector<double> next_wp1;
 	  vector<double> next_wp2;
@@ -264,9 +275,10 @@ int main() {
 	  ptsy.push_back(next_wp1[1]);
 	  ptsy.push_back(next_wp2[1]);
 	  
-	  /// the ptsx and ptsy vectors now each have 5 points: previous point, current point, point 30m ahead, 60m ahead, and 90m ahead
+	  // The ptsx and ptsy vectors now each have 5 points: previous point, current point, point 30m ahead, 60m ahead, and 90m ahead
 
-	  /// transform the ptsx and ptsy to the car's perspective, referencing the car's current angle as 0 degrees.
+	  // Transform the ptsx and ptsy to the car's perspective, referencing the car's current angle as 0 degrees.
+	  // This prevents an error when finding a spline where two points have the same x coordinate and an infinite slope.
 	  for (int i=0; i<ptsx.size(); ++i){
 	  
 	    double shift_x = ptsx[i]-ref_x;
@@ -276,55 +288,49 @@ int main() {
 	    ptsy[i] = (shift_x*sin(0-ref_yaw)+shift_y*cos(0-ref_yaw));
 	  }
 
-	  /// create a spline
+	  // create a spline
 	  tk::spline s;
 
-	  /// set (x,y) points to the spline
+	  // set (x,y) points to the spline
 	  s.set_points(ptsx,ptsy);
 
-	  /// Define the actual (x,y) points we will use for the planner
+	  // Define the actual (x,y) points to use for the planner
 	  vector<double> next_x_vals;
 	  vector<double> next_y_vals;
 	
-	  /// Start with all of the previous path points from last time (use what is already calculated instead of doing it all over)
-	  /// previous_path_x and previous_path_y are the path points still in the future, as returned by the simulator.
+	  // Start with all of the previous path points from the untraveled trajectory 
+	  // (use what is already calculated instead of doing it all over).
 	  for (int i=0; i<previous_path_x.size(); ++i){
 	    next_x_vals.push_back(previous_path_x[i]);
 	    next_y_vals.push_back(previous_path_y[i]);
 	  }
 
-	  /// Calculate how to break up spline points so that we travel at our desired reference velocity
-
+	  // Interpolate points along the spline at increments that correlate to the desired velocity and acceleration.
 	  double x_add_on = 0;
-	  double fut_vel = 0;
 	  
-	  if(prev_size > 12) {
-	    double x1 = previous_path_x[prev_size-1];
-	    double y1 = previous_path_y[prev_size-1];
-	    double x2 = previous_path_x[prev_size-12];
-	    double y2 = previous_path_y[prev_size-12];
-	    fut_vel = distance(x1,y1,x2,y2)/(11*0.02);
-	  }
-	  double pos_add_on = fut_vel * 0.02; ///position increase at current velocity per 0.02 timestep 
- 	  double incr_vel = ref_accel * 0.02; ///velocity increase increment due to acceleration per 0.02 second timestep
-	  double incr_pos = incr_vel * 0.02;  ///position increase increment due to acceleration per 0.02 second timestep
-	  double spd_limit_incr = ego.target_speed * 0.02;
-	  /// Fill up the rest of our path planner after filling it with previous path points returned by the simulator
-	  /// here it will always output a number of points equal to send_path_size
+	  // The distance traveled each 0.02 second increment needs to be determined according to the speed and acceleration.
+	  double pos_add_on = fut_vel * 0.02; // Position increase at future velocity per 0.02 timestep.
+ 	  double incr_vel = ref_accel * 0.02; // Velocity increase increment due to acceleration per 0.02 second timestep.
+	  double incr_pos = incr_vel * 0.02;  // Position increase increment due to acceleration per 0.02 second timestep.
+	  double spd_limit_incr = ego.target_speed * 0.02;  //speed limit
+	  // Fill up the rest of the path planner after filling it with previous path points returned by the simulator.
+	  // Here it will always output a number of points equal to send_path_size.
+	  // The spacing between x coordinates corresponds to velocity (and acceleration) in the direction of forward travel down the road.
+	  // The y coordinates correspond to the lateral lane position.
 	  for (int i=1; i<= send_path_size-previous_path_x.size(); ++i){
 	    double x_point;
-	    if ((pos_add_on+i*incr_pos)>(ego.target_speed*0.02)) { // going over speed limit for this 0.02 second interval
-	      x_point = x_add_on + ego.target_speed*0.02;
+	    if ((pos_add_on+i*incr_pos)>(ego.target_speed*0.02)) { // Going over speed limit for this 0.02 second interval
+	      x_point = x_add_on + ego.target_speed*0.02; // Stay under speed limit
 	    }
 	    else {
-	      x_point = x_add_on + pos_add_on + i*incr_pos;
+	      x_point = x_add_on + pos_add_on + i*incr_pos; // Increment according to desired speed and acceleration.
 	    }
-	    double y_point = s(x_point);
+	    double y_point = s(x_point); // Find lateral lane position along the spline for the corresponding forward movement.
 	    x_add_on = x_point;
 	    double x_ref = x_point;
 	    double y_ref = y_point;
 
-	    /// rotate back from car's perspective angle to world perspective angle after having rotated that way earlier.
+	    // Rotate back from car's perspective angle to world perspective angle after having rotated that way earlier.
 	    x_point = (x_ref *cos(ref_yaw)-y_ref*sin(ref_yaw));
 	    y_point = (x_ref *sin(ref_yaw)+y_ref*cos(ref_yaw));
 

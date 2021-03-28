@@ -40,24 +40,15 @@ class Vehicle {
 
   vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, double timesteps);
 
-  Vehicle predict_self(Vehicle ego, double timesteps);
-
-  void realize_next_state(vector<Vehicle> &trajectory);
+  Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel);
 
   void configure(vector<double> &road_data); 
 
-  // public Vehicle variables
-  struct collider{
-    bool collision; // is there a collision?
-    int  time; // time collision happens
-  };
-
-  map<string, int> lane_direction = {{"PLCL", -1}, {"LCL", -1}, 
-                                     {"LCR", 1}, {"PLCR", 1}};
+  map<string, int> lane_direction = {{"PLCL", -1}, {"LCL", -1}, {"LCR", 1}, {"PLCR", 1}};
 
   int L = 1;
 
-  int preferred_buffer = 25; // impacts "keep lane" behavior.
+  int preferred_buffer = 25; // used in get_kinematics() as the ideal distance to stay away from other vehicles.
 
   int lane, goal_lane, goal_s, lanes_available;
 
@@ -70,13 +61,13 @@ class Vehicle {
 
 #endif  // VEHICLE_H
 
-///a Vehicle can have
+// A Vehicle object can have
 // lane, d, s, v, a, x, y, vx, vy, yaw, state
 
-///The Vehicle for the self-driving car has:
+// The Vehicle object for the self-driving car has:
 // lane, d, s, v, a, x, y,   ,   , yaw, state
 
-///The Vehicles for the other cars have:
+// The Vehicle objects for the other cars have:
 // lane, d, s, v,  , x, y, vx, vy,    ,    
 
 
