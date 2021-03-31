@@ -21,11 +21,11 @@ float collision_cost(const Vehicle &predicted_self, const vector<Vehicle> &traje
   double behind_limit = predicted_self.s - predicted_self.preferred_buffer; // How far behind to look for side collisions in a lane change.
   for (int i=0; i<predictions.size(); ++i) {
     // If considering a lane change, and there is a vehicle in the way, then assign a high cost.
-    if ((predicted_self.state.compare("KL") != 0) && trajectory[0].lane == predictions[i].lane && (predictions[i].s <= ahead_limit && predictions[i].s >= behind_limit)) {
+    if ((predicted_self.lane != trajectory[0].lane) && (trajectory[0].lane == predictions[i].lane) && ((predictions[i].s <= ahead_limit) && (predictions[i].s >= behind_limit))) {
       cost = 1;
     }
   }
-
+  
   return cost;
 }
 
@@ -34,7 +34,7 @@ float collision_cost(const Vehicle &predicted_self, const vector<Vehicle> &traje
 float speed_cost(const Vehicle &predicted_self, const vector<Vehicle> &trajectory, const vector<Vehicle> &predictions) {
   //Cost is minimized as the trajectory's speeds approach the speed limit
   float cost = (predicted_self.target_speed - trajectory[0].v) / predicted_self.target_speed;
-
+  
   return cost;
 }
 
@@ -44,7 +44,7 @@ float lane_change_cost(const Vehicle &predicted_self, const vector<Vehicle> &tra
   //Lane changing is penalized a little to prevent frivolous lane changing unless there is a decent cost benefit elsewhere
   float cost = 0.0;
   if (trajectory[0].lane != trajectory[1].lane) {
-    cost = 0.05;
+    cost = 0.1;  
   }
 
   return cost;

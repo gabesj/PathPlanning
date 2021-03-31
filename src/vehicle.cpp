@@ -126,8 +126,9 @@ vector<double> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane, V
     // In the considered lane, if there is traffic both ahead and behind, adjust acceleration to position the car in the center of that gap.
     if ((get_vehicle_behind(predictions, lane, vehicle_behind, predicted_self))) {
       double relative_midpoint = (vehicle_ahead.s - vehicle_behind.s - 2*this->preferred_buffer) / 2;
-      if(relative_midpoint<=0) { // There 
-        gap_to_close = ((vehicle_ahead.s - vehicle_behind.s) / 2 + vehicle_behind.s) - predicted_self.s;
+      if(relative_midpoint<=0) { // The vehicles in the adjacent lane are too close to each other for the self-driving vehicle to merge between
+        //gap_to_close = ((vehicle_ahead.s - vehicle_behind.s) / 2 + vehicle_behind.s) - predicted_self.s;
+	gap_to_close = (vehicle_ahead.s - predicted_self.s - this->preferred_buffer);
       }
       else {
         gap_to_close = (relative_midpoint + vehicle_behind.s + this->preferred_buffer) - predicted_self.s;
@@ -150,6 +151,9 @@ vector<double> Vehicle::get_kinematics(vector<Vehicle> &predictions, int lane, V
       new_accel = std::max(accel_to_catch_up, (-1 * this->max_acceleration)); // Don't exceed minimum acceleration.
     }
     new_velocity = vehicle_ahead.v;
+    if ((predicted_self.v < (1.0 *vehicle_ahead.v)) && (new_accel < 0)) {
+      new_accel = new_accel * 0.5;// Keep from over-compensating deceleration
+    }
   } 
   else { // If there are no vehicles ahead in the considered lane
     new_accel = this->max_acceleration;
@@ -205,7 +209,7 @@ vector<Vehicle> Vehicle::prep_lane_change_trajectory(string state, vector<Vehicl
   // Get characteristics for the "final lane" (current lane) of the "PLCL"/"PLCR" state.
   trajectory.push_back(Vehicle(this->lane, predicted_self.d, predicted_self.s, final_lane_new_v, final_lane_new_a, predicted_self.x,
                        predicted_self.y, predicted_self.vx, predicted_self.vy, predicted_self.yaw, state));
- 
+  
   return trajectory;
 }
 
@@ -226,7 +230,7 @@ vector<Vehicle> Vehicle::lane_change_trajectory(string state, vector<Vehicle> &p
 			       predicted_self.vx, predicted_self.vy, predicted_self.yaw, state));
   // Get characteristics for the "final lane" (adjacent desired lane) of the "LCL"/"LCR" state.  
   trajectory.push_back(Vehicle(new_lane, new_d, predicted_self.s, new_v, new_a, predicted_self.x, predicted_self.y, 
-			       predicted_self.vx, predicted_self.vy, predicted_self.yaw, state)); // final lane
+			       predicted_self.vx, predicted_self.vy, predicted_self.yaw, state));
   
   return trajectory;
 }
@@ -277,8 +281,8 @@ Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel) {
   // Generates predictions for the self-driving ego vehicle
   Vehicle predicted_self = ego;
   double step_time = 0.02 * timesteps;
-  predicted_self.s += fut_vel*step_time + predicted_self.a*step_time*step_time;
-  predicted_self.v = fut_vel + predicted_self.a*step_time;
+  predicted_self.s += (fut_vel + predicted_self.v)/2 * step_time;//fut_vel*step_time + predicted_self.a*step_time*step_time;
+  predicted_self.v = fut_vel; // + predicted_self.a*step_time;
 
   return predicted_self;
 }
