@@ -177,8 +177,6 @@ int main() {
 	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size); 	  
 	  Vehicle predicted_self = predict_self(ego, prev_size, fut_vel); 
 
-
-  
 	  // Generate a plan which includes vehicle acceleration and lane designation.
  	  // The plan is returned in a vector of two Vehicle objects.  
 	  // The first object provides information for the intended lane of the next finite state, 
@@ -211,12 +209,8 @@ int main() {
 	    lane_changing = false;
 	  }
    	  lane = next_lane; 
-
-	 
 	  ego.state = trajectory[0].state; 
 	   
-	  
-	  
 	  // Create a list of widely spaced (x,y) future waypoints, evenly spaced at 30m.
   	  // Later these waypoints will be interpolated with a spline function and used to determine specific points in the trajectory.
 	  vector<double> ptsx;
