@@ -277,12 +277,13 @@ bool Vehicle::get_vehicle_ahead(vector<Vehicle> &predictions, int lane, Vehicle 
 
 
 
-Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel) {
+Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel, double end_path_s, double end_path_d) {
   // Generates predictions for the self-driving ego vehicle
   Vehicle predicted_self = ego;
-  double step_time = 0.02 * timesteps;
-  predicted_self.s += (fut_vel + predicted_self.v)/2 * step_time;//fut_vel*step_time + predicted_self.a*step_time*step_time;
-  predicted_self.v = fut_vel; // + predicted_self.a*step_time;
+  predicted_self.s = end_path_s;
+  //predicted_self.d = end_path_d;
+  //predicted_self.lane = round((predicted_self.d-2)/4);
+  predicted_self.v = fut_vel; 
 
   return predicted_self;
 }

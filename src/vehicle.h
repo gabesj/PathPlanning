@@ -40,7 +40,7 @@ class Vehicle {
 
   vector<Vehicle> generate_predictions(Vehicle ego, vector<Vehicle> other_cars, double timesteps);
 
-  Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel);
+  Vehicle predict_self(Vehicle ego, double timesteps, double fut_vel, double end_path_s, double end_path_d);
 
   void configure(vector<double> &road_data); 
 

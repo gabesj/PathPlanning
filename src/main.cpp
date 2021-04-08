@@ -84,7 +84,7 @@ int main() {
   double behind_horizon = 70.0;
   double ref_accel = 0.0;
   vector<double> config_data = {target_speed, max_accel, ahead_horizon, behind_horizon};
-  Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); 
+  Vehicle ego = Vehicle(lane, init_d, init_s, init_speed, init_accel, init_x, init_y, init_vx, init_vy, init_yaw); // Self-driving car
   ego.configure(config_data);
   ego.state = "KL";
   
@@ -175,7 +175,7 @@ int main() {
 
 	  // Get predictions for the future locations of other vehicles and the ego (self-driving) vehicle itself.
 	  vector<Vehicle> predictions = generate_predictions(ego, other_cars, prev_size); 	  
-	  Vehicle predicted_self = predict_self(ego, prev_size, fut_vel); 
+	  Vehicle predicted_self = predict_self(ego, prev_size, fut_vel, end_path_s, end_path_d); 
 
 	  // Generate a plan which includes vehicle acceleration and lane designation.
  	  // The plan is returned in a vector of two Vehicle objects.  
@@ -256,12 +256,12 @@ int main() {
 	  vector<double> next_wp1;
 	  vector<double> next_wp2;
 	  
-	  if(first_sweep) {
+	  if(first_sweep) { // If just starting, use the car's location as starting point for new points
 	    next_wp0 = getXY(ego.s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp1 = getXY(ego.s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp2 = getXY(ego.s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	  }
-	  else {
+	  else { // otherwise find points to add to the end of the planned path
 	    next_wp0 = getXY(end_path_s+30,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp1 = getXY(end_path_s+60,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
 	    next_wp2 = getXY(end_path_s+90,(2+4*lane),map_waypoints_s, map_waypoints_x, map_waypoints_y);
