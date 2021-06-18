@@ -1,6 +1,6 @@
 ### This is Gabe Johnson's completed project for the Path Planning course in Udacity's Self-Driving Car Nanodegree.
 
-The original assignment repo can be found here [Udacity Repo] (https://github.com/udacity/CarND-Path-Planning-Project)
+The original assignment repo can be found [here.](https://github.com/udacity/CarND-Path-Planning-Project)
 
 ## Goal:
 The goal is to navigate a car in a simulator that represents a highway with other vehicles.  The simulator provides a sparse map list of waypoint coordinates of the highway's path.  The simulator also provides cyclically updated localization data for the car itself and sensor fusion data of the surrounding vehicles. The assignment is to generate a trajectory of coordinates that the self-driving car should traverse.  This trajectory must take into account the curvature of the highway as well as the behavior of other vehicles on the road.  The self-driving car should travel the fastest route possible while staying under the speed limit, avoiding collisions, staying in its lane unless performing a lane change, and avoiding uncomfortable acceleration and jerk.  The self-driving car must pass slow moving traffic when safe to do so.
